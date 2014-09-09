@@ -19,6 +19,8 @@ import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriInfo;
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -208,6 +210,95 @@ public class UtilsWSServer extends GenericWSServer {
             result.put("global", jsonNode);
 
             br.close();
+
+        } catch (InterruptedException | IOException e) {
+            e.printStackTrace();
+            result.put("error", "could not read result files");
+        }
+
+        return createOkResponse(result);
+    }
+
+    @POST
+    @Path("/network/go-subgraph")
+    public Response goSubgraph(@FormParam("input") String inputFile,
+                               @DefaultValue("0.05") @FormParam("adjustedPvalue") String adjustedPvalue) throws IOException {
+
+        String home = Config.getGcsaHome();
+        Properties analysisProperties = Config.getAnalysisProperties();
+        Properties accountProperties = Config.getAccountProperties();
+
+        java.nio.file.Path filePath = Paths.get(inputFile);
+
+        String scriptName = "get_GOsubgraph.r";
+        String analysis = "fatigo";
+        java.nio.file.Path scriptPath = Paths.get(home, analysisProperties.getProperty("OPENCGA.ANALYSIS.BINARIES.PATH"), analysis, scriptName);
+
+        String command = "Rscript " + scriptPath.toString() + " " + filePath.toString() + " " + adjustedPvalue;
+
+
+        String fileName = filePath.getFileName().toString();
+        int index = fileName.lastIndexOf('.');
+        String name = fileName.substring(0, index);
+
+        java.nio.file.Path outputSIFFilePath = filePath.getParent().resolve(name + "_" + adjustedPvalue + "_GOsubgraph" + ".sif");
+        java.nio.file.Path outputAttributeFilePath = filePath.getParent().resolve(name + "_" + adjustedPvalue + "_GOsubgraph" + ".attr");
+
+
+        logger.info(command);
+        DBObjectMap result = new DBObjectMap();
+        try {
+
+            if (!Files.exists(outputSIFFilePath)) {
+                Process process = Runtime.getRuntime().exec(command);
+                process.waitFor();
+
+                /*PRINT OUTPUT*/
+                BufferedReader bri = new BufferedReader(new InputStreamReader(process.getInputStream()));
+                BufferedReader brie = new BufferedReader(new InputStreamReader(process.getErrorStream()));
+
+                StringBuilder out = new StringBuilder();
+                String line;
+                while ((line = bri.readLine()) != null) {
+                    out.append(line);
+                }
+                System.out.println("OUTPUT");
+                System.out.println(out.toString());
+                bri.close();
+
+                out = new StringBuilder();
+                while ((line = brie.readLine()) != null) {
+                    out.append(line);
+                }
+                System.out.println("ERROR");
+                System.out.println(out.toString());
+                brie.close();
+                /*PRINT OUTPUT*/
+
+                int exitValue = process.exitValue();
+                System.out.println("exitValue " + exitValue);
+            }
+
+
+            BufferedReader br = Files.newBufferedReader(outputSIFFilePath, Charset.defaultCharset());
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                sb.append(line);
+                sb.append("\n");
+            }
+            br.close();
+            result.put("sif", sb.toString());
+
+            br = Files.newBufferedReader(outputAttributeFilePath, Charset.defaultCharset());
+            sb = new StringBuilder();
+            line = null;
+            while ((line = br.readLine()) != null) {
+                sb.append(line);
+                sb.append("\n");
+            }
+            br.close();
+            result.put("attr", sb.toString());
 
         } catch (InterruptedException | IOException e) {
             e.printStackTrace();

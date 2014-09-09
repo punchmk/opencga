@@ -1,10 +1,13 @@
 package org.opencb.opencga.account.io;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import org.opencb.opencga.lib.common.ArrayUtils;
 import org.opencb.opencga.lib.common.IOUtils;
 import org.opencb.opencga.lib.common.ListUtils;
+import org.opencb.opencga.lib.common.XObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,7 +26,7 @@ public class JobFileIOUtils implements IOManager {
     protected static ObjectWriter jsonObjectWriter;
 
     public static String getSenchaTable(Path jobFile, String filename, String start, String limit, String colNames,
-                                        String colVisibility, String callback, String sort) throws IOManagementException, IOException {
+                                        String colVisibility, String sort) throws IOManagementException, IOException {
 
 
         jsonObjectMapper = new ObjectMapper();
@@ -46,7 +49,7 @@ public class JobFileIOUtils implements IOManager {
                     + jobFile.toAbsolutePath() + "'");
         }
 
-        StringBuilder stringBuilder = new StringBuilder();
+        XObject jsonObject = new XObject();
 
         int totalCount = -1;
         List<String> headLines;
@@ -85,24 +88,20 @@ public class JobFileIOUtils implements IOManager {
             IOUtils.prependString(jobFile, text);
         }
 
-        if (!sort.equals("false")) {
-            // Para obtener el numero de la columna a partir del
-            // nombre que viene del store de Sencha
-            Map<String, Integer> indexColumn = new HashMap<String, Integer>();
+//      sort string example: [{"property":"Term size","direction":"ASC"}]
+        if (!sort.isEmpty()) {
+            //Column Index
+            Map<String, Integer> columnIndex = new HashMap<String, Integer>();
             for (int i = 0; i < colnamesArray.length; i++) {
-                indexColumn.put(colnamesArray[i], i);
+                columnIndex.put(colnamesArray[i], i);
             }
 
-            // Parsear y obtener el nombre de la columna que envia
-            // Sencha
-            // logger.info("PAKO::SORT1: "+ sort);
+            ArrayNode sortArrayNode = (ArrayNode) jsonObjectMapper.readTree(sort);
+            JsonNode sortNode = sortArrayNode.get(0);
 
-            TableSort[] datos = jsonObjectMapper.readValue(sort, TableSort[].class);
-//            TableSort[] datos = gson.fromJson(sort, TableSort[].class);
-            logger.info("PAKO:SORT: " + Arrays.toString(datos));
-            int numColumn = indexColumn.get(datos[0].getProperty());
-            String direction = datos[0].getDirection();
-            logger.info("PAKO:SORT:NUMCOLUMN " + numColumn);
+
+            int numColumn = columnIndex.get(sortNode.get("property").asText());
+            String direction = sortNode.get("direction").asText();
 
             boolean decreasing = false;
             if (direction.equals("DESC")) {
@@ -116,46 +115,45 @@ public class JobFileIOUtils implements IOManager {
             int[] orderedRowIndices = ArrayUtils.order(numbers, decreasing);
 
             String[] fields;
-            stringBuilder.append(callback + "({\"total\":\"" + totalCount + "\",\"items\":[");
+            jsonObject.put("total", totalCount);
+            List<XObject> items = new ArrayList<>();
             for (int j = 0; j < orderedRowIndices.length; j++) {
                 if (j >= first && j < end) {
                     fields = dataFile.get(orderedRowIndices[j]).split("\t");
-                    stringBuilder.append("{");
+                    XObject item = new XObject();
                     for (int i = 0; i < fields.length; i++) {
                         if (Integer.parseInt(colvisibilityArray[i].toString()) == 1) {
-                            stringBuilder.append("\"" + colnamesArray[i] + "\":\"" + fields[i] + "\",");
+                            item.put(colnamesArray[i], fields[i]);
                         }
                     }
-                    stringBuilder.append("}");
-                    stringBuilder.append(",");
+                    items.add(item);
                 } else {
                     if (j >= end) {
                         break;
                     }
                 }
             }
-            stringBuilder.append("]});");
+            jsonObject.put("items", items);
 
         } else {// END SORT
 
             int numLine = 0;
-            String line = null;
+            String line;
             String[] fields;
             BufferedReader br = Files.newBufferedReader(jobFile, Charset.defaultCharset());
-            stringBuilder.append(callback + "({\"total\":\"" + totalCount + "\",\"items\":[");
+            jsonObject.put("total", totalCount);
+            List<XObject> items = new ArrayList<>();
             while ((line = br.readLine()) != null) {
                 if (!line.startsWith("#")) {
                     if (numLine >= first && numLine < end) {
                         fields = line.split("\t");
-                        stringBuilder.append("{");
-                        logger.info("PAKO::length: " + fields.length);
+                        XObject item = new XObject();
                         for (int i = 0; i < fields.length; i++) {
-                            if (Integer.parseInt(colvisibilityArray[i].toString()) == 1) {
-                                stringBuilder.append("\"" + colnamesArray[i] + "\":\"" + fields[i] + "\",");
+                            if (Integer.parseInt(colvisibilityArray[i]) == 1) {
+                                item.put(colnamesArray[i], fields[i]);
                             }
                         }
-                        stringBuilder.append("}");
-                        stringBuilder.append(",");
+                        items.add(item);
                     } else {
                         if (numLine >= end) {
                             break;
@@ -165,9 +163,10 @@ public class JobFileIOUtils implements IOManager {
                 }
             }
             br.close();
-            stringBuilder.append("]});");
+            jsonObject.put("items", items);
         }
-        return stringBuilder.toString();
+
+        return jsonObjectWriter.writeValueAsString(jsonObject);
     }
 
     private static List<String> getAvoidingFiles() {

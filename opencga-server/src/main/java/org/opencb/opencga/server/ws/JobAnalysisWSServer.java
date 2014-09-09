@@ -58,18 +58,23 @@ public class JobAnalysisWSServer extends GenericWSServer {
         }
     }
 
+    @OPTIONS
+    @Path("/table")
+    public Response table() {
+        return createOkResponse("", MediaType.TEXT_PLAIN_TYPE);
+    }
+
     @GET
     @Path("/table")
     public Response table(@DefaultValue("") @QueryParam("filename") String filename,
                           @DefaultValue("") @QueryParam("start") String start, @DefaultValue("") @QueryParam("limit") String limit,
                           @DefaultValue("") @QueryParam("colNames") String colNames,
                           @DefaultValue("") @QueryParam("colVisibility") String colVisibility,
-                          @DefaultValue("") @QueryParam("callback") String callback,
-                          @QueryParam("sort") @DefaultValue("false") String sort) {
+                          @QueryParam("sort") @DefaultValue("") String sort) {
 
         try {
             String res = cloudSessionManager.getFileTableFromJob(accountId, jobId, filename, start, limit, colNames,
-                    colVisibility, callback, sort, sessionId);
+                    colVisibility, sort, sessionId);
             return createOkResponse(res, MediaType.valueOf("text/javascript"));
         } catch (Exception e) {
             logger.error(e.toString());
