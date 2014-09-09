@@ -134,6 +134,7 @@ public class AnalysisWSServer extends GenericWSServer {
     }
 
     private Response analysis(MultivaluedMap<String, String> params) throws IOException, AccountManagementException {
+
         if (params.containsKey("sessionid")) {
             sessionId = params.get("sessionid").get(0);
             params.remove("sessionid");

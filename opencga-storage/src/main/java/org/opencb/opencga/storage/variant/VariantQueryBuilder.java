@@ -50,17 +50,17 @@ public interface VariantQueryBuilder {
 //    QueryResult getAllBySampleList(List<Sample> samples, QueryOptions options);
 
 
-    @Deprecated
-    List<VariantInfo> getRecords(Map<String, String> options);
-
-    @Deprecated
-    List<VariantStats> getRecordsStats(Map<String, String> options);
-
-    @Deprecated
-    List<VariantEffect> getEffect(Map<String, String> options);
-
-    @Deprecated
-    VariantAnalysisInfo getAnalysisInfo(Map<String, String> options);
+//    @Deprecated
+//    List<VariantInfo> getRecords(Map<String, String> options);
+//
+//    @Deprecated
+//    List<VariantStats> getRecordsStats(Map<String, String> options);
+//
+//    @Deprecated
+//    List<VariantEffect> getEffect(Map<String, String> options);
+//
+//    @Deprecated
+//    VariantAnalysisInfo getAnalysisInfo(Map<String, String> options);
 
     public boolean close();
 

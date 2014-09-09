@@ -21,21 +21,21 @@ import java.util.logging.Logger;
  */
 public class VariantVcfMongoDataWriter extends VariantDBWriter {
 
-    private VariantSource source;
+    protected VariantSource source;
 
-    private MongoClient mongoClient;
-    private DB db;
-    private DBCollection sourcesCollection;
-    private DBCollection variantCollection;
-    private Map<String, BasicDBObject> mongoMap;
+    protected MongoClient mongoClient;
+    protected DB db;
+    protected DBCollection sourcesCollection;
+    protected DBCollection variantCollection;
+    protected Map<String, BasicDBObject> mongoMap;
 
-    private MongoCredentials credentials;
+    protected MongoCredentials credentials;
 
-    private boolean includeStats;
-    private boolean includeEffect;
-    private boolean includeSamples;
+    protected boolean includeStats;
+    protected boolean includeEffect;
+    protected boolean includeSamples;
 
-    private Map<String, Integer> conseqTypes;
+    protected Map<String, Integer> conseqTypes;
 
     public VariantVcfMongoDataWriter(VariantSource source, String species, MongoCredentials credentials) {
         if (credentials == null) {
@@ -95,10 +95,10 @@ public class VariantVcfMongoDataWriter extends VariantDBWriter {
     }
 
     @Override
-    boolean buildBatchRaw(List<Variant> data) {
+    public boolean buildBatchRaw(List<Variant> data) {
         for (Variant v : data) {
             String rowkey = buildRowkey(v.getChromosome(), String.valueOf(v.getPosition()));
-            
+
             // Check that this relationship was not established yet
             BasicDBObject query = new BasicDBObject("chr", v.getChromosome()).append("pos", v.getPosition());
             query.append("sources.sourceId", source.getAlias());
@@ -149,7 +149,7 @@ public class VariantVcfMongoDataWriter extends VariantDBWriter {
     }
 
     @Override
-    boolean buildStatsRaw(List<Variant> data) {
+    public boolean buildStatsRaw(List<Variant> data) {
         for (Variant variant : data) {
             VariantStats v = variant.getStats();
             if (v == null) {
@@ -196,7 +196,7 @@ public class VariantVcfMongoDataWriter extends VariantDBWriter {
     }
 
     @Override
-    boolean buildEffectRaw(List<Variant> variants) {
+    public boolean buildEffectRaw(List<Variant> variants) {
         for (Variant v : variants) {
             String rowkey = buildRowkey(v.getChromosome(), String.valueOf(v.getPosition()));
             BasicDBObject mongoStudy = mongoMap.get(rowkey);
@@ -227,14 +227,14 @@ public class VariantVcfMongoDataWriter extends VariantDBWriter {
     }
 
     @Override
-    boolean buildBatchIndex(List<Variant> data) {
+    public boolean buildBatchIndex(List<Variant> data) {
         variantCollection.ensureIndex(new BasicDBObject("chr", 1).append("pos", 1));
         variantCollection.ensureIndex(new BasicDBObject("sources.sourceId", 1));
         return true;
     }
 
     @Override
-    boolean writeBatch(List<Variant> data) {
+    public boolean writeBatch(List<Variant> data) {
         for (Variant v : data) {
             String rowkey = buildRowkey(v.getChromosome(), String.valueOf(v.getPosition()));
 
@@ -324,7 +324,7 @@ public class VariantVcfMongoDataWriter extends VariantDBWriter {
         return true;
     }
 
-    private String buildRowkey(String chromosome, String position) {
+    protected String buildRowkey(String chromosome, String position) {
         return chromosome + "_" + position;
     }
 

@@ -100,34 +100,34 @@ public class VariantMongoQueryBuilderTest extends GenericTest {
         vqb.close();
         super.tearDown();
     }
-
-    @Test
-    public void testGetRecords() throws Exception {
-
-        Map<String, String> opts = new HashMap<>();
-        opts.put("studyId", "aaleman_-_gRG1m4J84GjLlzi");
-        opts.put("maf_1000g_controls", "0.1");
-        opts.put("miss_gt", "0");
-        opts.put("option_miss_gt", "=");
-        opts.put("conseq_type", "non_synonymous_codon");
-        MutableInt count = new MutableInt(-1);
-
-        QueryResult<VariantInfo> records = ((VariantMongoQueryBuilder) vqb).getRecordsMongo(1, 0, 25, count, opts);
 //
-        System.out.println(count.getValue());
-        System.out.println(records);
-    }
-
-    @Ignore
-    @Test
-    public void testAnalysisInfo() throws Exception {
-
-        QueryResult<VariantAnalysisInfo> res = ((VariantMongoQueryBuilder) vqb).getAnalysisInfo("ayuso_-_3Tjnqxn97mgGBgU");
-        VariantAnalysisInfo vi = res.getResult().get(0);
-
-        System.out.println("vi.getSamples() = " + vi.getSamples());
-        System.out.println("vi.getConsequenceTypes() = " + vi.getConsequenceTypes());
-        System.out.println("vi.getGlobalStats() = " + vi.getGlobalStats());
-
-    }
+//    @Test
+//    public void testGetRecords() throws Exception {
+//
+//        Map<String, String> opts = new HashMap<>();
+//        opts.put("studyId", "aaleman_-_gRG1m4J84GjLlzi");
+//        opts.put("maf_1000g_controls", "0.1");
+//        opts.put("miss_gt", "0");
+//        opts.put("option_miss_gt", "=");
+//        opts.put("conseq_type", "non_synonymous_codon");
+//        MutableInt count = new MutableInt(-1);
+//
+//        QueryResult<VariantInfo> records = ((VariantMongoQueryBuilder) vqb).getRecordsMongo(1, 0, 25, count, opts);
+////
+//        System.out.println(count.getValue());
+//        System.out.println(records);
+//    }
+//
+//    @Ignore
+//    @Test
+//    public void testAnalysisInfo() throws Exception {
+//
+//        QueryResult<VariantAnalysisInfo> res = ((VariantMongoQueryBuilder) vqb).getAnalysisInfo("ayuso_-_3Tjnqxn97mgGBgU");
+//        VariantAnalysisInfo vi = res.getResult().get(0);
+//
+//        System.out.println("vi.getSamples() = " + vi.getSamples());
+//        System.out.println("vi.getConsequenceTypes() = " + vi.getConsequenceTypes());
+//        System.out.println("vi.getGlobalStats() = " + vi.getGlobalStats());
+//
+//    }
 }

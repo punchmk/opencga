@@ -596,25 +596,25 @@ public class VariantMonbaseQueryBuilder implements VariantQueryBuilder {
         return results;
     }
 
-    @Override
-    public List<VariantInfo> getRecords(Map<String, String> options) {
-        return null;  //To change body of implemented methods use File | Settings | File Templates.
-    }
-
-    @Override
-    public List<VariantStats> getRecordsStats(Map<String, String> options) {
-        return null;  //To change body of implemented methods use File | Settings | File Templates.
-    }
-
-    @Override
-    public List<VariantEffect> getEffect(Map<String, String> options) {
-        return null;  //To change body of implemented methods use File | Settings | File Templates.
-    }
-
-    @Override
-    public VariantAnalysisInfo getAnalysisInfo(Map<String, String> options) {
-        return null;  //To change body of implemented methods use File | Settings | File Templates.
-    }
+//    @Override
+//    public List<VariantInfo> getRecords(Map<String, String> options) {
+//        return null;  //To change body of implemented methods use File | Settings | File Templates.
+//    }
+//
+//    @Override
+//    public List<VariantStats> getRecordsStats(Map<String, String> options) {
+//        return null;  //To change body of implemented methods use File | Settings | File Templates.
+//    }
+//
+//    @Override
+//    public List<VariantEffect> getEffect(Map<String, String> options) {
+//        return null;  //To change body of implemented methods use File | Settings | File Templates.
+//    }
+//
+//    @Override
+//    public VariantAnalysisInfo getAnalysisInfo(Map<String, String> options) {
+//        return null;  //To change body of implemented methods use File | Settings | File Templates.
+//    }
 
     @Override
     public boolean close() {

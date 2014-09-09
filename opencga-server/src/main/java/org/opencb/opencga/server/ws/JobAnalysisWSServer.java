@@ -3,8 +3,6 @@ package org.opencb.opencga.server.ws;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.base.Joiner;
 import org.apache.commons.lang.mutable.MutableInt;
-import org.apache.hadoop.hbase.MasterNotRunningException;
-import org.apache.hadoop.hbase.ZooKeeperConnectionException;
 import org.opencb.commons.bioformats.variant.json.VariantAnalysisInfo;
 import org.opencb.commons.bioformats.variant.json.VariantInfo;
 import org.opencb.commons.bioformats.variant.utils.stats.VariantStats;
@@ -172,147 +170,147 @@ public class JobAnalysisWSServer extends GenericWSServer {
     // TODO Find place for this webservices
     //VARIANT EXPLORER WS
 
+//
+//    @OPTIONS
+//    @Path("/variantsMongo")
+//    public Response getVariantsMongoOpt() {
+//        return createOkResponse("");
+//    }
+//
+//    @GET
+//    @Path("/variantsMongo")
+//    public Response getVariantsMongo() {
+//        Map<String, String> map = new LinkedHashMap<>();
+//
+//        UriInfo info = uriInfo;
+//
+//        if (cloudSessionManager.checkAccount(accountId, sessionId)) {
+//
+//
+//            MultivaluedMap<String, String> queryParams = info.getQueryParameters();
+//            for (Map.Entry<String, List<String>> entry : queryParams.entrySet()) {
+//                map.put(entry.getKey(), Joiner.on(",").join(entry.getValue()));
+//            }
+//
+//
+//            int page = (info.getQueryParameters().containsKey("page")) ? Integer.parseInt(info.getQueryParameters().getFirst("page")) : 1;
+//            int start = (info.getQueryParameters().containsKey("start")) ? Integer.parseInt(info.getQueryParameters().getFirst("start")) : 0;
+//            int limit = (info.getQueryParameters().containsKey("limit")) ? Integer.parseInt(info.getQueryParameters().getFirst("limit")) : 25;
+////        String callback = (info.getQueryParameters().containsKey("callback")) ? info.getQueryParameters().getFirst("callback") : "null";
+//
+//            map.put("studyId", accountId + "_-_" + this.jobId);
+//
+//            System.out.println(map);
+//            MutableInt count = new MutableInt(-1);
+//
+//            Properties prop = new Properties();
+//            prop.put("mongo_host", "mem15");
+//            prop.put("mongo_port", 27017);
+//            prop.put("mongo_db_name", "cibererStudies");
+//            prop.put("mongo_user", "user");
+//            prop.put("mongo_password", "pass");
+//
+//            MongoCredentials credentials = new MongoCredentials(prop);
+//            VariantQueryBuilder vqm;
+//            String res = null;
+//            QueryResult<VariantInfo> queryResult = null;
+//            try {
+//                vqm = new VariantMongoQueryBuilder(credentials);
+//                queryResult = ((VariantMongoQueryBuilder) vqm).getRecordsMongo(page, start, limit, count, map);
+//
+//                queryResult.setNumResults(count.intValue());
+//                vqm.close();
+//
+//            } catch (UnknownHostException e) {
+//                e.printStackTrace();
+//            }
+//            return createOkResponse(queryResult);
+//        } else {
+//            return createErrorResponse("User Not allowed!!");
+//        }
+//    }
 
-    @OPTIONS
-    @Path("/variantsMongo")
-    public Response getVariantsMongoOpt() {
-        return createOkResponse("");
-    }
+//
+//    @OPTIONS
+//    @Path("/variantInfoMongo")
+//    public Response getAnalysisInfoMongoOpt() {
+//        return createOkResponse("");
+//    }
+//
+//
+//    @GET
+//    @Path("/variantInfoMongo")
+//    public Response getAnalysisInfoMongo() {
+//
+//        String studyId = (accountId + "_-_" + this.jobId);
+//
+//        if (cloudSessionManager.checkAccount(accountId, sessionId)) {
+//
+//
+//            Properties prop = new Properties();
+//            prop.put("mongo_host", "mem15");
+//            prop.put("mongo_port", 27017);
+//            prop.put("mongo_db_name", "cibererStudies");
+//            prop.put("mongo_user", "user");
+//            prop.put("mongo_password", "pass");
+//
+//            MongoCredentials credentials = new MongoCredentials(prop);
+//            VariantQueryBuilder vqm;
+//            String res = null;
+//            QueryResult<VariantAnalysisInfo> queryResult = null;
+//            try {
+//                vqm = new VariantMongoQueryBuilder(credentials);
+//
+//                queryResult = ((VariantMongoQueryBuilder) vqm).getAnalysisInfo(studyId);
+//
+//                res = jsonObjectMapper.writeValueAsString(queryResult);
+//
+//                vqm.close();
+//
+//            } catch (UnknownHostException e) {
+//                e.printStackTrace();
+//            } catch (JsonProcessingException e) {
+//                e.printStackTrace();
+//            }
+//
+//
+//            return createOkResponse(queryResult);
+//        } else {
+//            return createErrorResponse("User not Allowed!!");
+//        }
+//
+//
+//    }
 
-    @GET
-    @Path("/variantsMongo")
-    public Response getVariantsMongo() {
-        Map<String, String> map = new LinkedHashMap<>();
-
-        UriInfo info = uriInfo;
-
-        if (cloudSessionManager.checkAccount(accountId, sessionId)) {
-
-
-            MultivaluedMap<String, String> queryParams = info.getQueryParameters();
-            for (Map.Entry<String, List<String>> entry : queryParams.entrySet()) {
-                map.put(entry.getKey(), Joiner.on(",").join(entry.getValue()));
-            }
-
-
-            int page = (info.getQueryParameters().containsKey("page")) ? Integer.parseInt(info.getQueryParameters().getFirst("page")) : 1;
-            int start = (info.getQueryParameters().containsKey("start")) ? Integer.parseInt(info.getQueryParameters().getFirst("start")) : 0;
-            int limit = (info.getQueryParameters().containsKey("limit")) ? Integer.parseInt(info.getQueryParameters().getFirst("limit")) : 25;
-//        String callback = (info.getQueryParameters().containsKey("callback")) ? info.getQueryParameters().getFirst("callback") : "null";
-
-            map.put("studyId", accountId + "_-_" + this.jobId);
-
-            System.out.println(map);
-            MutableInt count = new MutableInt(-1);
-
-            Properties prop = new Properties();
-            prop.put("mongo_host", "mem15");
-            prop.put("mongo_port", 27017);
-            prop.put("mongo_db_name", "cibererStudies");
-            prop.put("mongo_user", "user");
-            prop.put("mongo_password", "pass");
-
-            MongoCredentials credentials = new MongoCredentials(prop);
-            VariantQueryBuilder vqm;
-            String res = null;
-            QueryResult<VariantInfo> queryResult = null;
-            try {
-                vqm = new VariantMongoQueryBuilder(credentials);
-                queryResult = ((VariantMongoQueryBuilder) vqm).getRecordsMongo(page, start, limit, count, map);
-
-                queryResult.setNumResults(count.intValue());
-                vqm.close();
-
-            } catch (MasterNotRunningException | ZooKeeperConnectionException | UnknownHostException e) {
-                e.printStackTrace();
-            }
-            return createOkResponse(queryResult);
-        } else {
-            return createErrorResponse("User Not allowed!!");
-        }
-    }
-
-
-    @OPTIONS
-    @Path("/variantInfoMongo")
-    public Response getAnalysisInfoMongoOpt() {
-        return createOkResponse("");
-    }
-
-
-    @GET
-    @Path("/variantInfoMongo")
-    public Response getAnalysisInfoMongo() {
-
-        String studyId = (accountId + "_-_" + this.jobId);
-
-        if (cloudSessionManager.checkAccount(accountId, sessionId)) {
-
-
-            Properties prop = new Properties();
-            prop.put("mongo_host", "mem15");
-            prop.put("mongo_port", 27017);
-            prop.put("mongo_db_name", "cibererStudies");
-            prop.put("mongo_user", "user");
-            prop.put("mongo_password", "pass");
-
-            MongoCredentials credentials = new MongoCredentials(prop);
-            VariantQueryBuilder vqm;
-            String res = null;
-            QueryResult<VariantAnalysisInfo> queryResult = null;
-            try {
-                vqm = new VariantMongoQueryBuilder(credentials);
-
-                queryResult = ((VariantMongoQueryBuilder) vqm).getAnalysisInfo(studyId);
-
-                res = jsonObjectMapper.writeValueAsString(queryResult);
-
-                vqm.close();
-
-            } catch (MasterNotRunningException | ZooKeeperConnectionException | UnknownHostException e) {
-                e.printStackTrace();
-            } catch (JsonProcessingException e) {
-                e.printStackTrace();
-            }
-
-
-            return createOkResponse(queryResult);
-        } else {
-            return createErrorResponse("User not Allowed!!");
-        }
-
-
-    }
-
-    @POST
-    @Path("/variant_stats")
-    @Consumes("application/x-www-form-urlencoded")
-    public Response getVariantStats(@DefaultValue("") @QueryParam("filename") String filename, MultivaluedMap<String, String> postParams) {
-
-        Map<String, String> map = new LinkedHashMap<>();
-
-        for (Map.Entry<String, List<String>> entry : postParams.entrySet()) {
-            map.put(entry.getKey(), Joiner.on(",").join(entry.getValue()));
-        }
-
-        System.out.println(map);
-
-        java.nio.file.Path dataPath = cloudSessionManager.getJobFolderPath(accountId, projectId, Paths.get(this.jobId)).resolve(filename);
-
-        System.out.println("dataPath = " + dataPath.toString());
-
-        map.put("db_name", dataPath.toString());
-        VariantQueryBuilder vqm = new VariantSqliteQueryBuilder();
-        List<VariantStats> list = vqm.getRecordsStats(map);
-
-        String res = null;
-        try {
-            res = jsonObjectMapper.writeValueAsString(list);
-
-        } catch (JsonProcessingException e) {
-            e.printStackTrace();
-        }
-        return createOkResponse(res);
-    }
+//    @POST
+//    @Path("/variant_stats")
+//    @Consumes("application/x-www-form-urlencoded")
+//    public Response getVariantStats(@DefaultValue("") @QueryParam("filename") String filename, MultivaluedMap<String, String> postParams) {
+//
+//        Map<String, String> map = new LinkedHashMap<>();
+//
+//        for (Map.Entry<String, List<String>> entry : postParams.entrySet()) {
+//            map.put(entry.getKey(), Joiner.on(",").join(entry.getValue()));
+//        }
+//
+//        System.out.println(map);
+//
+//        java.nio.file.Path dataPath = cloudSessionManager.getJobFolderPath(accountId, projectId, Paths.get(this.jobId)).resolve(filename);
+//
+//        System.out.println("dataPath = " + dataPath.toString());
+//
+//        map.put("db_name", dataPath.toString());
+//        VariantQueryBuilder vqm = new VariantSqliteQueryBuilder();
+//        List<VariantStats> list = vqm.getRecordsStats(map);
+//
+//        String res = null;
+//        try {
+//            res = jsonObjectMapper.writeValueAsString(list);
+//
+//        } catch (JsonProcessingException e) {
+//            e.printStackTrace();
+//        }
+//        return createOkResponse(res);
+//    }
 
 }
