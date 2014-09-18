@@ -56,7 +56,8 @@
                    {"name":"platform", "description":"Platform value.", "required":"true"},
                    {"name":"exp-name", "description":"Experiment name.", "required":"true"},
                    {"name":"k", "description":"k-fold", "required":"true"},
-                   {"name":"expdesigntype", "description":"exp design type", "required":"true"}
+                   {"name":"expdesigntype", "description":"exp design type", "required":"true"},
+                   {"name":"predmethod","description":"Prediction method","required":"true"}
          ],
          "configAttr": [],
          "testCmd": "",

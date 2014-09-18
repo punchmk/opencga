@@ -42,7 +42,7 @@ def main():
       command = "/opt/R/R-2.15.2/bin/Rscript "+homePath+"/pathiwaysMAIN.r "+homePath+" "+opts.pathways+" "+opts.celornormalizedmatrix+" "+opts.summ+" "+opts.experimentaldesign+" "+opts.control+" "+opts.disease+" "+opts.outdir+" "+opts.platform+" "+opts.expname+" "+opts.test+" "+opts.paired
     
     if opts.execution == 'pathipred': 
-      command = "/opt/R/R-2.15.2/bin/Rscript "+homePath+"/pathipredMAIN.r "+homePath+" "+homePath+" "+opts.celornormalizedmatrix+" "+opts.experimentaldesign+" "+opts.outdir+" "+opts.pathways+" "+opts.summ+" "+opts.control+" "+opts.disease+" "+opts.platform+" "+opts.expname+" "+opts.k+" "+opts.expdesigntype
+      command = "/opt/R/R-2.15.2/bin/Rscript "+homePath+"/pathipredMAIN.r "+homePath+" "+homePath+" "+opts.celornormalizedmatrix+" "+opts.experimentaldesign+" "+opts.outdir+" "+opts.pathways+" "+opts.summ+" "+opts.control+" "+opts.disease+" "+opts.platform+" "+opts.expname+" "+opts.k+" "+opts.expdesigntype+" "+opts.predmethod
     
     if opts.execution == 'pathipred-prediction':
       command = "/opt/R/R-2.15.2/bin/Rscript "+homePath+"/pathipred_prediction_MAIN.r "+homePath+" "+homePath+" "+opts.celornormalizedmatrix+" "+opts.experimentaldesign+" "+opts.outdir+" "+opts.pathways+" "+opts.summ+" "+opts.control+" "+opts.disease+" "+opts.platform+"  "+opts.expdesigntype+" "+opts.bestmodelfile
@@ -165,7 +165,11 @@ def get_options():
                       help='k')
 
     parser.add_option('--expdesigntype', dest='expdesigntype', metavar="STRING",
-                      help='k')
+                      help='')
+
+    parser.add_option('--predmethod', dest='predmethod', metavar="STRING",
+                      help='')
+
 
     parser.add_option('--execution', dest='execution', metavar="STRING",
                       help='pathiways or pathipred')
