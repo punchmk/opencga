@@ -49,7 +49,12 @@
                 {
                     "name": "list2",
                     "description": "the file containig the list #2 of genes, or the feature data file",
-                    "required": "true"
+                    "required": "false"
+                },
+                {
+                    "name": "genome",
+                    "description": "vs genome",
+                    "required": "false"
                 },
                 {
                     "name": "fisher",

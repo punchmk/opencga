@@ -91,25 +91,27 @@ var RESULT = {
                                             adjustedPvalue: group
                                         },
                                         success:function(data, networkViewer){
+//                                            if (data.indexOf("ERROR") != -1) {
+//                                                console.error(data);
+//                                            }
 
-                                            if (data.indexOf("ERROR") != -1) {
-                                                console.error(data);
-                                            }
 
-                                            var sifNetworkDataAdapter = new SIFNetworkDataAdapter({
-                                                dataSource: new StringDataSource(data.sif),
+                                            var textNetworkDataAdapter = new TextNetworkDataAdapter({
+                                                dataSource: new StringDataSource(data.response.sif),
                                                 handlers: {
                                                     'data:load': function (event) {
-                                                        networkViewer.setGraph(event.graph);
-                                                        networkViewer.setLayout('Force directed');
+                                                        var graph = event.sender.parseColumns(0, 1, -1, "link");
+                                                        networkViewer.setGraph(graph);
+//                                                        networkViewer.setLayout('Force directed');
                                                     },
                                                     'error:parse': function (event) {
                                                         console.log(event.errorMsg);
                                                     }
                                                 }
                                             });
+
                                             var attributeNetworkDataAdapter = new AttributeNetworkDataAdapter({
-                                                dataSource: new StringDataSource(data.attr),
+                                                dataSource: new StringDataSource(data.response.attr),
                                                 handlers: {
                                                     'data:load': function (event) {
                                                         var json = event.sender.getAttributesJSON();
@@ -166,6 +168,7 @@ var RESULT = {
                     items: [
                         {
                             xtype: 'box',
+                            cls: 'ocb-panel-title',
                             html: 'Choose your adjusted pvalue thereshold:'
                         },
                         {
