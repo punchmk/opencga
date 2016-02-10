@@ -1,4 +1,4 @@
-from distutils.core import setup
+from setuptools import setup
 import uuid
 from pip.req import parse_requirements
 import os
