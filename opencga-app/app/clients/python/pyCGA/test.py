@@ -4,15 +4,15 @@ from unittest import TestCase
 from pyCGA.CatalogWS import Users, Files, Samples, Individuals
 from pyCGA.Exceptions import ServerResponseException
 
-file_to_register = '/genomes/analysis/rare_disease/50000578/1467626646/LP2000268-DNA_A06/Variations/LP2000268-DNA_A06.tiering.json'
-folder_to_register = '/genomes/analysis/rare_disease/50000578/1467626646/LP2000268-DNA_A06/logs'
+file_to_register = 'xxxxx/LP2000268-DNA_A06/Variations/LP2000268-DNA_A06.tiering.json'
+folder_to_register = 'xxxxx/50000578/1467626646/LP2000268-DNA_A06/logs'
 sample_to_register = 'LP2000268-DNA_A06'
 test_folder = 'test/'
 model_to_create_annotation_set = ''
 data_to_register = ''
-host = 'http://10.0.32.42:8080/'
-catalog_instance = 'opencga_08'
-pwd = 'gel'
+host = 'XXXX'
+catalog_instance = 'XXXX'
+pwd = 'XXXX'
 study_id = 'ts'
 individual_to_register = '500000521'
 
