@@ -1,24 +1,20 @@
 package org.opencb.opencga.analysis.storage;
 
-import org.apache.tools.ant.types.Commandline;
 import org.junit.rules.ExternalResource;
 import org.opencb.commons.datastore.core.ObjectMap;
-import org.opencb.commons.datastore.core.QueryResult;
 import org.opencb.commons.datastore.mongodb.MongoDataStore;
 import org.opencb.commons.datastore.mongodb.MongoDataStoreManager;
 import org.opencb.opencga.analysis.AnalysisExecutionException;
-import org.opencb.opencga.analysis.execution.executors.ExecutorManager;
-import org.opencb.opencga.analysis.execution.executors.LocalExecutorManager;
-import org.opencb.opencga.app.cli.analysis.AnalysisMain;
 import org.opencb.opencga.catalog.CatalogManagerExternalResource;
 import org.opencb.opencga.catalog.exceptions.CatalogException;
 import org.opencb.opencga.catalog.managers.CatalogFileUtils;
 import org.opencb.opencga.catalog.managers.CatalogManager;
 import org.opencb.opencga.catalog.models.File;
 import org.opencb.opencga.catalog.models.Job;
+import org.opencb.opencga.catalog.monitor.exceptions.ExecutionException;
+import org.opencb.opencga.catalog.monitor.executors.old.ExecutorManager;
 import org.opencb.opencga.catalog.utils.FileMetadataReader;
 import org.opencb.opencga.core.common.Config;
-import org.opencb.opencga.storage.app.StorageMain;
 import org.opencb.opencga.storage.core.StorageManager;
 import org.opencb.opencga.storage.core.StorageManagerFactory;
 import org.opencb.opencga.storage.core.config.StorageConfiguration;
@@ -32,7 +28,6 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.Arrays;
 import java.util.Map;
 
 import static org.opencb.opencga.storage.core.variant.VariantStorageManagerTestUtils.getResourceUri;
@@ -86,7 +81,7 @@ public class OpenCGATestExternalResource extends ExternalResource {
         Files.createDirectory(opencgaHome.resolve("storage"));
         VariantStorageManagerTestUtils.setRootDir(opencgaHome.resolve("storage"));
 
-        ExecutorManager.localExecutorFactory.set((c, s) -> new StorageLocalExecutorManager(s));
+//        ExecutorManager.LOCAL_EXECUTOR_FACTORY.set((c, s) -> new StorageLocalExecutorManager(s));
     }
 
     @Override
@@ -184,7 +179,11 @@ public class OpenCGATestExternalResource extends ExternalResource {
 
     public static Job runStorageJob(CatalogManager catalogManager, Job job, Logger logger, String sessionId)
             throws AnalysisExecutionException, CatalogException, IOException {
-        ExecutorManager.execute(catalogManager, job, sessionId);
+        try {
+            ExecutorManager.execute(catalogManager, job, sessionId);
+        } catch (ExecutionException e) {
+            throw new AnalysisExecutionException(e.getCause());
+        }
         return catalogManager.getJob(job.getId(), null, sessionId).first();
     }
 
@@ -207,40 +206,40 @@ public class OpenCGATestExternalResource extends ExternalResource {
         }
     }
 
-    private class StorageLocalExecutorManager extends LocalExecutorManager {
-
-        public StorageLocalExecutorManager(String sessionId) {
-            super(OpenCGATestExternalResource.this.catalogManagerExternalResource.getCatalogManager(), sessionId);
-        }
-        protected final Logger logger = LoggerFactory.getLogger(StorageLocalExecutorManager.class);
-
-        @Override
-        public QueryResult<Job> run(Job job) throws CatalogException, AnalysisExecutionException {
-
-            String[] args = Commandline.translateCommandline(job.getCommandLine());
-            int exitValue;
-            if (args[0].contains(AnalysisFileIndexer.OPENCGA_STORAGE_BIN_NAME)) {
-                logger.info("==========================================");
-                logger.info("Executing opencga-storage " + job.getName());
-                logger.info("==========================================");
-                exitValue = StorageMain.privateMain((Arrays.copyOfRange(args, 1, args.length)));
-                logger.info("==========================================");
-                logger.info("Finish opencga-storage");
-                logger.info("==========================================");
-            } else if (args[0].contains(AnalysisFileIndexer.OPENCGA_ANALYSIS_BIN_NAME)) {
-                logger.info("==========================================");
-                logger.info("Executing opencga-analysis " + job.getName());
-                logger.info("==========================================");
-                exitValue = AnalysisMain.privateMain((Arrays.copyOfRange(args, 1, args.length)));
-                logger.info("==========================================");
-                logger.info("Finish opencga-analysis");
-                logger.info("==========================================");
-            } else {
-                logger.info("Executing external job!");
-                return super.run(job);
-            }
-
-            return this.postExecuteLocal(job, exitValue, new ObjectMap(), null);
-        }
-    }
+//    private class StorageLocalExecutorManager extends LocalExecutorManager {
+//
+//        public StorageLocalExecutorManager(String sessionId) {
+//            super(OpenCGATestExternalResource.this.catalogManagerExternalResource.getCatalogManager(), sessionId);
+//        }
+//        protected final Logger logger = LoggerFactory.getLogger(StorageLocalExecutorManager.class);
+//
+//        @Override
+//        public QueryResult<Job> run(Job job) throws CatalogException, ExecutionException, IOException {
+//
+//            String[] args = Commandline.translateCommandline(job.getCommandLine());
+//            int exitValue;
+//            if (args[0].contains(AnalysisFileIndexer.OPENCGA_STORAGE_BIN_NAME)) {
+//                logger.info("==========================================");
+//                logger.info("Executing opencga-storage " + job.getName());
+//                logger.info("==========================================");
+//                exitValue = StorageMain.privateMain((Arrays.copyOfRange(args, 1, args.length)));
+//                logger.info("==========================================");
+//                logger.info("Finish opencga-storage");
+//                logger.info("==========================================");
+//            } else if (args[0].contains(AnalysisFileIndexer.OPENCGA_ANALYSIS_BIN_NAME)) {
+//                logger.info("==========================================");
+//                logger.info("Executing opencga-analysis " + job.getName());
+//                logger.info("==========================================");
+//                exitValue = AnalysisMain.privateMain((Arrays.copyOfRange(args, 1, args.length)));
+//                logger.info("==========================================");
+//                logger.info("Finish opencga-analysis");
+//                logger.info("==========================================");
+//            } else {
+//                logger.info("Executing external job!");
+//                return super.run(job);
+//            }
+//
+//            return this.postExecuteLocal(job, exitValue, new ObjectMap(), null);
+//        }
+//    }
 }

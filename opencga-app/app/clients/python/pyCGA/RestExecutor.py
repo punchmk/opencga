@@ -264,4 +264,4 @@ class WS:
 
         except ServerResponseException or WSErrorException:
             logging.error(ServerResponseException.message)
-            print ServerResponseException.message
+            print(ServerResponseException.message)

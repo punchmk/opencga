@@ -16,6 +16,8 @@
 
 package org.opencb.opencga.client.rest;
 
+import org.biojava.nbio.alignment.Alignments;
+import org.opencb.biodata.models.variant.Variant;
 import org.opencb.commons.datastore.core.ObjectMap;
 import org.opencb.commons.datastore.core.QueryOptions;
 import org.opencb.commons.datastore.core.QueryResponse;
@@ -43,8 +45,8 @@ public class FileClient extends AbstractParentClient<File, FileAclEntry> {
         this.aclClass = FileAclEntry.class;
     }
 
-    public QueryResponse<File> createFolder(String studyId, String path, ObjectMap params) throws CatalogException, IOException {
-        params = addParamsToObjectMap(params, "studyId", studyId, "folder", path);
+    public QueryResponse<File> createFolder(String studyId, String paths, ObjectMap params) throws CatalogException, IOException {
+        params = addParamsToObjectMap(params, "studyId", studyId, "folders", paths);
         return execute(FILES_URL, "create-folder", params, GET, File.class);
     }
 
@@ -81,20 +83,21 @@ public class FileClient extends AbstractParentClient<File, FileAclEntry> {
         return execute(FILES_URL, fileId, "grep", params, GET, File.class);
     }
 
-    public QueryResponse<File> list(String fileId, QueryOptions options) throws CatalogException, IOException {
-        return execute(FILES_URL, fileId, "list", options, GET, File.class);
+    public QueryResponse<File> list(String folderId, QueryOptions options) throws CatalogException, IOException {
+        folderId = folderId.replace('/', ':');
+        return execute(FILES_URL, folderId, "list", options, GET, File.class);
     }
 
     public QueryResponse<File> getFiles(String fileId, QueryOptions options) throws CatalogException, IOException {
         return execute(FILES_URL, fileId, "files", options, GET, File.class);
     }
 
-    public QueryResponse<File> update(String fileId, ObjectMap params) throws CatalogException, IOException {
-        return execute(FILES_URL, fileId, "update", params, GET, File.class);
-    }
-
     public QueryResponse<File> delete(String fileId, ObjectMap params) throws CatalogException, IOException {
         return execute(FILES_URL, fileId, "delete", params, GET, File.class);
+    }
+
+    public QueryResponse<File> treeView(String folderId, ObjectMap params) throws CatalogException, IOException {
+        return execute(FILES_URL, folderId, "tree-view", params, GET, File.class);
     }
 
     public QueryResponse<File> refresh(String fileId, QueryOptions options) throws CatalogException, IOException {
@@ -104,6 +107,13 @@ public class FileClient extends AbstractParentClient<File, FileAclEntry> {
     public QueryResponse<File> upload(String studyId, String filePath, ObjectMap params) throws CatalogException, IOException {
         params = addParamsToObjectMap(params, "studyId", studyId, "file", filePath);
         return execute(FILES_URL, "upload", params, POST, File.class);
+    }
+    public QueryResponse<File> groupBy(String studyId, String fields, ObjectMap params) throws CatalogException, IOException {
+        params = addParamsToObjectMap(params, "studyId", studyId, "fields", fields);
+        return execute(FILES_URL, "groupBy", params, GET, File.class);
+    }
+    public QueryResponse<Alignments> alignments(String fieldId, QueryOptions options) throws CatalogException, IOException {
+        return execute(FILES_URL, fieldId, "alignments", options, GET, Alignments.class);
     }
 
     /**
@@ -120,5 +130,8 @@ public class FileClient extends AbstractParentClient<File, FileAclEntry> {
         return uri;
     }
 
+    public QueryResponse<Variant> getVariants(String fileId, QueryOptions options) throws CatalogException, IOException {
+        return execute(FILES_URL, fileId, "variants", options, GET, Variant.class);
+    }
 
 }

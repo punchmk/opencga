@@ -149,7 +149,7 @@ class Files(WS):
         :param studyId: study to associate file to
         :param folder: "path in the DB"
         """
-        return self.general_method(ws_category1="files", action="create-folder", studyId=studyId, folder=folder,
+        return self.general_method(ws_category1="files", action="create-folder", studyId=studyId, folders=folder,
                                    **options)
 
     def link(self, studyId, uri, path, description="", parents=False, calculateChecksum=False, createFolder=True,
@@ -483,7 +483,7 @@ class Samples(WS):
         :param delete: True/False - If True the user could delete the file
         :param unshare: True/False - If True the file will be unshared for this user
         """
-        return self.general_method("samples", "share", item_id1=fileId, unshare=str(unshare).lower(), userId=userId,
+        return self.general_method("samples", "share", item_id1=sampleId, unshare=str(unshare).lower(), userId=userId,
                                    read=str(read).lower(), write=str(write).lower(), delete=str(delete).lower(),
                                    **options)
 
