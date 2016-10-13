@@ -173,9 +173,9 @@ class AnnotationSet:
         self.data = {}
         for annotation in annotations:
             if isinstance(annotation["value"], float):
-                try:
+                if int(annotation["value"]) == float(annotation["value"]):
                     self.data[annotation["id"]] = int(annotation["value"])
-                except:
+                else:
                     self.data[annotation["id"]] = float(annotation["value"])
             else:
                 self.data[annotation["id"]] = annotation["value"]

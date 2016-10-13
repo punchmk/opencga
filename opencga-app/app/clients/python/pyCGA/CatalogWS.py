@@ -414,7 +414,7 @@ class Samples(WS):
         return self.search(studyId=studyId, variableSetId=str(v_id), annotation=";".join(queries))
 
     def annotate(self, sample_id, variableSetName, annotationSetName, studyId, json_file=None, data=None, update=True,
-                 **options):
+                 delete=False, **options):
         """
         This annotate a sample using a json file (this is a post method)
 
@@ -433,7 +433,17 @@ class Samples(WS):
         variable = Variables()
         variableSetId = str(variable.search(studyId=studyId, name=variableSetName)[0]["id"])
 
-        if update:
+        if delete:
+            for annt_set in self.info(str(sample_id))[0]["annotationSets"]:
+                if annt_set["variableSetId"] == int(variableSetId):
+                    annotationSetName = annt_set["id"]
+
+                    self.general_method(ws_category="samples", method_name="annotate",
+                                        item_id=str(sample_id), annotateSetName=annotationSetName,
+                                        variableSetId=variableSetId, delete="true", data=data
+                                        )
+                    return 0
+        elif update:
             for annt_set in self.info(str(sample_id))[0]["annotationSets"]:
                 if annt_set["variableSetId"] == int(variableSetId):
                     annotationSetName = annt_set["id"]
@@ -442,11 +452,11 @@ class Samples(WS):
                                                item_id=str(sample_id), annotateSetName=annotationSetName,
                                                variableSetId=variableSetId, update="true", data=data
                                                )
+        else:
+            annotateSetName = annotationSetName + "_" + str(datetime.datetime.now()).replace(" ", "_").replace(":", "_")
 
-        annotateSetName = annotationSetName + "_" + str(datetime.datetime.now()).replace(" ", "_").replace(":", "_")
-
-        return self.general_method(ws_category="samples", method_name="annotate", item_id=sample_id,
-                                   variableSetId=variableSetId, annotateSetName=annotateSetName, data=data, **options)
+            return self.general_method(ws_category="samples", method_name="annotate", item_id=sample_id,
+                                       variableSetId=variableSetId, annotateSetName=annotateSetName, data=data, **options)
 
     def info(self, sampleId, **options):
         """
@@ -541,7 +551,7 @@ class Individuals(WS):
         return self.general_method(ws_category="individuals", method_name="delete", item_id=individualId, **options)
 
     def annotate(self, individual_id, variableSetName, annotationSetName, studyId, json_file=None, data=None,
-                 update=True):
+                 update=True, delete=False):
         """
         This annotate a individual using a json file (this is a post method)
 
@@ -560,8 +570,17 @@ class Individuals(WS):
 
         variable = Variables()
         variableSetId = str(variable.search(studyId=studyId, name=variableSetName)[0]["id"])
+        if delete:
+            for annt_set in self.info(str(individual_id))[0]["annotationSets"]:
+                if annt_set["variableSetId"] == int(variableSetId):
+                    annotationSetName = annt_set["id"]
 
-        if update:
+                    return self.general_method(ws_category="individuals", method_name="annotate",
+                                               item_id=str(individual_id), annotateSetName=annotationSetName,
+                                               variableSetId=variableSetId, delete='true', data=data
+                                               )
+
+        elif update:
             for annt_set in self.info(str(individual_id))[0]["annotationSets"]:
                 if annt_set["variableSetId"] == int(variableSetId):
                     annotationSetName = annt_set["id"]
@@ -570,13 +589,13 @@ class Individuals(WS):
                                                item_id=str(individual_id), annotateSetName=annotationSetName,
                                                variableSetId=variableSetId, update="true", data=data
                                                )
+        else:
+            annotationSetName = annotationSetName + "_" + str(datetime.datetime.now()).replace(" ", "_").replace(":", "_")
 
-        annotationSetName = annotationSetName + "_" + str(datetime.datetime.now()).replace(" ", "_").replace(":", "_")
-
-        return self.general_method(ws_category="individuals", method_name="annotate",
-                                   item_id=str(individual_id), annotateSetName=annotationSetName,
-                                   variableSetId=variableSetId, update="false", data=data
-                                   )
+            return self.general_method(ws_category="individuals", method_name="annotate",
+                                       item_id=str(individual_id), annotateSetName=annotationSetName,
+                                       variableSetId=variableSetId, update="false", data=data
+                                       )
 
     def search_by_annotation(self, studyId, variableSetName, *queries, **options):
         """

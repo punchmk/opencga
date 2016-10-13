@@ -183,7 +183,8 @@ class WS:
         """
         response = self.r_session.post(url, json=data)
         if self.check_server_response(response.status_code):
-            return self.get_result(response.json())
+            total_result, skipped, num_results, results = self.get_result(response.json())
+            return results
         else:
             logging.error("WS Failed, status: " + str(response.status_code))
             raise ServerResponseException("WS Failed, status: " + str(response.status_code))
