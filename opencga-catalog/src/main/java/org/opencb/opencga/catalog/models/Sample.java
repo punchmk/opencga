@@ -42,6 +42,7 @@ public class Sample extends Annotable<SampleAclEntry> {
 
 
     public Sample() {
+        this(-1, "", "", -1, "");
     }
 
     public Sample(long id, String name, String source, long individualId, String description) {

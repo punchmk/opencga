@@ -76,6 +76,7 @@ public class File extends AbstractAcl<FileAclEntry> {
 
 
     public File() {
+        this("", null, null, null, "", "", null, -1);
     }
 
     public File(String name, Type type, Format format, Bioformat bioformat, String path, String description, FileStatus status,
