@@ -46,3 +46,4 @@ database:
   password: ${OPENCGA.CATALOG.DB.PASSWORD}
   options:
     authenticationDatabase: ${OPENCGA.CATALOG.DB.AUTHENTICATION_DATABASE}
+    connectionsPerHost: 100
