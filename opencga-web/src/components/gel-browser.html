@@ -1,0 +1,114 @@
+<dom-module id="gel-browser">
+    <template>
+        <style is="custom-style" include="jso-styles"></style>
+        <style>
+            .center {
+                text-align: justify;
+            }
+
+            dt {
+                float: left;
+                clear: left;
+                text-align: right;
+                width: 15%;
+                color: #645a5a;
+            }
+
+            dd {
+                float: left;
+                margin-left: 1em;
+                color: #999
+            }
+        </style>
+
+        <div class="center">
+
+
+
+        </div>
+
+        <div class="container-fluid" id="igvDiv" style="padding:5px; border:1px solid lightgray"></div>
+
+
+    </template>
+    <script>
+        Polymer({
+            is: 'gel-browser',
+
+            properties: {
+                opencgaClient: {
+                    type: Object
+                },
+                study: {
+                    type: Object,
+                    observer: '_getStudyInfo'
+                },
+                prefix: {
+                    type: Object
+                }
+            },
+
+            ready: function() {
+                if (typeof this.prefix === "undefined" || this.prefix == "") {
+                    this.prefix = "gel-browser" + Utils.randomString(6);
+                }
+
+                this.availableFiles = [];
+                this.shownFiles = [];
+            },
+
+            _getStudyInfo: function() {
+                if (this.opencgaClient instanceof OpenCGAClient && this.study !== "undefined" && this.study.hasOwnProperty("id")) {
+                    this.baseUrl = "http://" + this.opencgaClient.getConfig().host + "/webservices/rest/v1/files/ranges?sid="
+                        + this.opencgaClient.getConfig().sessionId + "&study=" + this.study.id + "&file=";
+
+                    this.availableFiles = [];
+                    this.shownFiles = [];
+
+                    let _this = this;
+                    // TODO: List files
+                    this.opencgaClient.files().search({
+                        study: this.study.id,
+                        format: "BAM",
+                        bioformat: "ALIGNMENT"
+                    }).then(function (response) {
+                        _this.availableFiles = response.response[0].result;
+
+                        let tracks = [];
+                        for (let i = 0; i < _this.availableFiles.length; i++) {
+                            tracks.push({
+                                type: "alignment",
+                                url: _this.baseUrl + _this.availableFiles[i].path,
+                                name: _this.availableFiles[i].name
+                            });
+                        }
+
+                        tracks.push({
+                            name: "Genes",
+                            type: "annotation",
+                            format: "bed",
+                            sourceType: "file",
+                            url: "//igv.broadinstitute.org/annotations/hg19/genes/gencode.v18.collapsed.bed",
+                            indexURL: "//igv.broadinstitute.org/annotations/hg19/genes/gencode.v18.collapsed.bed.idx",
+                            displayMode: "EXPANDED"
+                        });
+
+                        let div = $("#igvDiv")[0],
+                            options = {
+                                showNavigation: true,
+                                showRuler: true,
+                                genome: "hg19",
+                                locus: "chr1:13,000-14,000",
+                                tracks: tracks
+                            };
+                        igv.createBrowser(div, options);
+
+
+                    });
+
+                }
+            }
+
+        });
+    </script>
+</dom-module>

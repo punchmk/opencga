@@ -15,7 +15,8 @@
  */
 
 var opencga = {
-    host: "bioinfodev.hpc.cam.ac.uk/hgva-1.0.0",
+    host: "bioinfodev.hpc.cam.ac.uk/opencga-test",
+    // host: "localhost:8080/opencga",
     version: "v1",
     cookiePrefix: "opencga"
 };

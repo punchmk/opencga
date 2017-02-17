@@ -25,7 +25,7 @@
 <link rel="import" href="welcome.html">
 <link rel="import" href="opencga-dashboard.html">
 <link rel="import" href="../lib/jsorolla/src/lib/opencga/catalog/opencga-project.html">
-<link rel="import" href="opencga-study-browser.html">
+<link rel="import" href="components/gel-browser.html">
 
 <dom-module id="opencga-catalog">
     <template>
@@ -205,7 +205,7 @@
                                      on-study="updateStudy"></opencga-project>
                 </div>
                 <div class="collapse content" id="studyInfo">
-                    <opencga-study-browser study="{{study}}" opencga-client="{{opencgaClient}}"></opencga-study-browser>
+                    <gel-browser study="{{study}}" opencga-client="{{opencgaClient}}"></gel-browser>
                 </div>
             </div>
         </div>
@@ -359,6 +359,7 @@
             },
             afterLogin: function(e) {
                 this.userId = e.detail.userId;
+                this.opencgaClient._config.sessionId = e.detail.sessionId;
                 // hide login window and return to home
                 $('#ModalLogin').modal('hide');
 //                $('.content').hide();
