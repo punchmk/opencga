@@ -2,10 +2,6 @@
     <template>
         <style is="custom-style" include="jso-styles"></style>
         <style>
-            .center {
-                text-align: justify;
-            }
-
             dt {
                 float: left;
                 clear: left;
@@ -23,12 +19,9 @@
 
         <div class="center">
 
-
-
         </div>
 
         <div class="container-fluid" id="igvDiv" style="padding:5px; border:1px solid lightgray"></div>
-
 
     </template>
     <script>
@@ -38,75 +31,176 @@
             properties: {
                 opencgaClient: {
                     type: Object
-                },
-                study: {
-                    type: Object,
-                    observer: '_getStudyInfo'
-                },
-                prefix: {
-                    type: Object
                 }
             },
+            observers: [
+                'getInfo(opencgaClient._config.sessionId)'
+            ],
 
-            ready: function() {
-                if (typeof this.prefix === "undefined" || this.prefix == "") {
-                    this.prefix = "gel-browser" + Utils.randomString(6);
-                }
+            getInfo: function() {
+                if (typeof this.opencgaClient._config.sessionId !== "undefined" && this.opencgaClient._config.sessionId !== "") {
+                    // Get the queryParams
+                    let queryParams = URI.parseQuery(window.location.search);
+                    let paramKeys = Object.keys(queryParams);
 
-                this.availableFiles = [];
-                this.shownFiles = [];
-            },
+                    if (paramKeys.indexOf("study") === -1) {
+                        // TODO: RETURN BIG ERROR !
+                        return;
+                    }
 
-            _getStudyInfo: function() {
-                if (this.opencgaClient instanceof OpenCGAClient && this.study !== "undefined" && this.study.hasOwnProperty("id")) {
                     this.baseUrl = "http://" + this.opencgaClient.getConfig().host + "/webservices/rest/v1/files/ranges?sid="
-                        + this.opencgaClient.getConfig().sessionId + "&study=" + this.study.id + "&file=";
+                        + this.opencgaClient.getConfig().sessionId + "&study=" + queryParams.study + "&file=";
 
-                    this.availableFiles = [];
-                    this.shownFiles = [];
+                    let files = [];
+                    if (paramKeys.indexOf("samples") > -1 || paramKeys.indexOf("cohorts") > -1 || paramKeys.indexOf("individuals") > -1) {
+                        // We check that the user only passed one of those parameters
+                        let count = 0;
+                        count += paramKeys.indexOf("samples") > -1 ? 1 : 0;
+                        count += paramKeys.indexOf("cohorts") > -1 ? 1 : 0;
+                        count += paramKeys.indexOf("individuals") > -1 ? 1 : 0;
+                        if (count > 1) {
+                            // TODO: RETURN BIG ERROR
+                            return;
+                        }
 
-                    let _this = this;
-                    // TODO: List files
-                    this.opencgaClient.files().search({
-                        study: this.study.id,
-                        format: "BAM",
-                        bioformat: "ALIGNMENT"
-                    }).then(function (response) {
-                        _this.availableFiles = response.response[0].result;
-
-                        let tracks = [];
-                        for (let i = 0; i < _this.availableFiles.length; i++) {
-                            tracks.push({
-                                type: "alignment",
-                                url: _this.baseUrl + _this.availableFiles[i].path,
-                                name: _this.availableFiles[i].name
+                        if (paramKeys.indexOf("samples") > -1) {
+                            this.searchFiles({
+                                study: queryParams.study,
+                                sample: queryParams.samples
                             });
                         }
 
-                        tracks.push({
-                            name: "Genes",
-                            type: "annotation",
-                            format: "bed",
-                            sourceType: "file",
-                            url: "//igv.broadinstitute.org/annotations/hg19/genes/gencode.v18.collapsed.bed",
-                            indexURL: "//igv.broadinstitute.org/annotations/hg19/genes/gencode.v18.collapsed.bed.idx",
-                            displayMode: "EXPANDED"
-                        });
+                        if (paramKeys.indexOf("cohorts") > -1) {
+                            this.searchCohorts(queryParams.cohorts, {study: queryParams.study});
+                        }
 
-                        let div = $("#igvDiv")[0],
-                            options = {
-                                showNavigation: true,
-                                showRuler: true,
-                                genome: "hg19",
-                                locus: "chr1:13,000-14,000",
-                                tracks: tracks
-                            };
-                        igv.createBrowser(div, options);
+                        if (paramKeys.indexOf("individuals") > -1) {
 
+                        }
 
-                    });
+                    } else if (paramKeys.indexOf("files") > -1) {
+                        this.infoFiles(queryParams.files, {study: queryParams.study});
+                    } else {
+                        // TODO: RETURN BIG ERROR !
+                        return;
+                    }
 
                 }
+            },
+
+            searchCohorts: function(cohorts, query) {
+                query["include"] = "samples";
+
+                let _this = this;
+                this.opencgaClient.cohorts.info(cohorts, query).then(function (response) {
+                    debugger
+
+                });
+            },
+
+            // This is only called when files is being used in the URL as it can be path, id or name
+            infoFiles: function(files, query) {
+                // / are not allowed in the info webservices as files will be part of the path param
+                files = files.replace(/\//g, ":");
+
+                query["include"] = "path,name";
+
+                let _this = this;
+                this.opencgaClient.files().info(files, query).then(function (response) {
+                    let tracks = _this.parseFileResponse(response);
+                    _this.renderIGV(tracks);
+                });
+            },
+
+            // This is the one that will be used when samples are passed in the URL
+            searchFiles: function(query) {
+                query["include"] = "path,name";
+
+                let _this = this;
+                this.opencgaClient.files().search(query).then(function (response) {
+                    let tracks = _this.parseFileResponse(response);
+                    _this.renderIGV(tracks);
+                });
+            },
+
+            // It parses the file response to create an array of tracks to be loaded into IGV
+            parseFileResponse: function(response) {
+                let alignmentTracks = [];
+                let variantTracks = [];
+                let annotationTracks = [];
+                let wigTracks = [];
+
+                for (let j = 0; j < response.response.length; j++) {
+                    let availableFiles = response.response[j].result;
+
+                    for (let i = 0; i < availableFiles.length; i++) {
+                        if (availableFiles[i].name.endsWith("bam")) {
+                            alignmentTracks.push({
+                                type: "alignment",
+                                url: this.baseUrl + availableFiles[i].path,
+                                name: availableFiles[i].name
+                            });
+                        } else if (availableFiles[i].name.endsWith("vcf") || availableFiles[i].name.endsWith("vcf.gz")) {
+                            variantTracks.push({
+                                type: "variant",
+//                                url: this.baseUrl + availableFiles[i].path,
+//                                indexURL: this.baseUrl + availableFiles[i].path + ".tbi",
+                                url: "https://s3.amazonaws.com/1000genomes/release/20130502/ALL.wgs.phase3_shapeit2_mvncall_integrated_v5b.20130502.sites.vcf.gz",
+                                indexURL:  "https://s3.amazonaws.com/1000genomes/release/20130502/ALL.wgs.phase3_shapeit2_mvncall_integrated_v5b.20130502.sites.vcf.gz.tbi",
+                                name: availableFiles[i].name
+                            });
+                        } else if (availableFiles[i].name.endsWith("bed") || availableFiles[i].name.endsWith("gff")) {
+                            annotationTracks.push({
+                                type: "annotation",
+                                url: this.baseUrl + availableFiles[i].path,
+                                name: availableFiles[i].name
+                            });
+                        } else if (availableFiles[i].name.endsWith("wig") || availableFiles[i].name.endsWith("bigWig")) {
+                            wigTracks.push({
+                                type: "wig",
+                                url: this.baseUrl + availableFiles[i].path,
+                                name: availableFiles[i].name
+                            });
+                        } else {
+                            console.log("File " + availableFiles[i].name + " ignored");
+                        }
+                    }
+                }
+
+
+                let tracks = alignmentTracks.concat(variantTracks, annotationTracks, wigTracks);
+//
+//                tracks.push({
+//                    name: "Genes",
+//                    type: "annotation",
+//                    format: "bed",
+//                    sourceType: "file",
+//                    url: "//igv.broadinstitute.org/annotations/hg19/genes/gencode.v18.collapsed.bed",
+//                    indexURL: "//igv.broadinstitute.org/annotations/hg19/genes/gencode.v18.collapsed.bed.idx",
+//                    displayMode: "EXPANDED"
+//                });
+
+                debugger
+                return tracks;
+            },
+
+            renderIGV: function(tracks) {
+                let queryParams = URI.parseQuery(window.location.search);
+
+                let region = "chr1:13,000-14,000";
+                if (typeof queryParams.region !== "undefined") {
+                    region = queryParams.region;
+                }
+
+                let div = $("#igvDiv")[0],
+                    options = {
+                        showNavigation: true,
+                        showRuler: true,
+                        genome: "hg38",
+                        locus: region,
+                        tracks: tracks
+                    };
+                igv.createBrowser(div, options);
             }
 
         });

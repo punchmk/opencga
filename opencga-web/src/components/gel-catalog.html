@@ -1,0 +1,108 @@
+<!--
+  ~ Copyright 2015-2016 OpenCB
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~     http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+
+<link rel="import" href="../../bower_components/polymer/polymer.html">
+
+<link rel="import" href="../jso-styles.html">
+
+<link rel="import" href="../../lib/jsorolla/src/lib/opencga/catalog/opencga-login.html">
+<link rel="import" href="gel-browser.html">
+
+<dom-module id="gel-catalog">
+    <template>
+        <style is="custom-style" include="jso-styles"></style>
+        <style>
+            :root {
+                --default-primary-color: black;
+                --text-primary-color: white;
+            }
+
+            .center {
+                margin: 10px;
+                text-align: justify;
+                font-size: 16px;
+                color: #797979;
+            }
+
+        </style>
+
+        <div class="center">
+            <opencga-login hidden$="{{_logged}}" on-login="afterLogin" opencga-client="{{opencgaClient}}"
+                           login-text="Sign in"></opencga-login>
+            <div hidden$="{{!_logged}}">
+                <a on-click="logout" style="cursor: pointer">
+                    <i class="fa fa-sign-out fa-lg"></i> Logout
+                </a>
+
+                <gel-browser opencga-client="{{opencgaClient}}"></gel-browser>
+            </div>
+        </div>
+
+    </template>
+    <script>
+        Polymer({
+            is: 'gel-catalog',
+            properties: {
+                opencgaClient: {
+                    type: Object
+                },
+                prefix: {
+                    type: String
+                }
+            },
+
+            ready: function() {
+                this._logged = false;
+
+                if (typeof this.prefix === "undefined" || this.prefix == "") {
+                    this.prefix = Utils.randomString(6);
+                }
+
+                // Copy 'application' object from config.js file
+                this.config = opencga;
+
+                // Initialize the configuration file and the js client
+                this.opencgaClientConfig = new OpenCGAClientConfig(this.config.host, this.config.version, true, this.config.cookiePrefix);
+                this.opencgaClient = new OpenCGAClient(this.opencgaClientConfig);
+
+                let sid = Cookies.get(this.opencgaClientConfig.cookieSessionId);
+                if (typeof sid !== "undefined" && sid != "") {
+                    this.userId = Cookies.get(this.opencgaClientConfig.cookieUserId);
+                    this.sessionId = sid;
+                    this.set('opencgaClient._config.sessionId', sid);
+                    this._logged = true;
+                }
+            },
+            afterLogin: function(e) {
+                this.userId = e.detail.userId;
+                this.set('opencgaClient._config.sessionId', e.detail.sessionId);
+                this._logged = true;
+            },
+            logout: function() {
+                var _this = this;
+                this.opencgaClient.users().logout()
+                    .then(function() {
+                        _this.userId = "";
+                        _this.sessionId = "";
+                        _this.opencgaClient._config.sessionId = "";
+
+                        _this._logged = false;
+                    });
+            }
+        });
+
+    </script>
+</dom-module>
