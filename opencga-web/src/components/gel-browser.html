@@ -48,8 +48,8 @@
                         return;
                     }
 
-                    this.baseUrl = "http://" + this.opencgaClient.getConfig().host + "/webservices/rest/v1/files/ranges?sid="
-                        + this.opencgaClient.getConfig().sessionId + "&study=" + queryParams.study + "&file=";
+                    this.baseUrl = "http://" + this.opencgaClient.getConfig().host + "/webservices/rest/v1/utils/ranges/";
+                    this.queryParams = "?sid=" + this.opencgaClient.getConfig().sessionId + "&study=" + queryParams.study;
 
                     let files = [];
                     if (paramKeys.indexOf("samples") > -1 || paramKeys.indexOf("cohorts") > -1 || paramKeys.indexOf("individuals") > -1) {
@@ -134,31 +134,32 @@
                     let availableFiles = response.response[j].result;
 
                     for (let i = 0; i < availableFiles.length; i++) {
+                        availableFiles[i].path = availableFiles[i].path.replace("/", ":");
+
                         if (availableFiles[i].name.endsWith("bam")) {
                             alignmentTracks.push({
                                 type: "alignment",
-                                url: this.baseUrl + availableFiles[i].path,
+                                url: this.baseUrl + availableFiles[i].path + this.queryParams,
+                                indexURL: this.baseUrl + availableFiles[i].path + ".bai" + this.queryParams,
                                 name: availableFiles[i].name
                             });
                         } else if (availableFiles[i].name.endsWith("vcf") || availableFiles[i].name.endsWith("vcf.gz")) {
                             variantTracks.push({
                                 type: "variant",
-//                                url: this.baseUrl + availableFiles[i].path,
-//                                indexURL: this.baseUrl + availableFiles[i].path + ".tbi",
-                                url: "https://s3.amazonaws.com/1000genomes/release/20130502/ALL.wgs.phase3_shapeit2_mvncall_integrated_v5b.20130502.sites.vcf.gz",
-                                indexURL:  "https://s3.amazonaws.com/1000genomes/release/20130502/ALL.wgs.phase3_shapeit2_mvncall_integrated_v5b.20130502.sites.vcf.gz.tbi",
+                                url: this.baseUrl + availableFiles[i].path + this.queryParams,
+                                indexURL: this.baseUrl + availableFiles[i].path + ".tbi" + this.queryParams,
                                 name: availableFiles[i].name
                             });
                         } else if (availableFiles[i].name.endsWith("bed") || availableFiles[i].name.endsWith("gff")) {
                             annotationTracks.push({
                                 type: "annotation",
-                                url: this.baseUrl + availableFiles[i].path,
+                                url: this.baseUrl + availableFiles[i].path + this.queryParams,
                                 name: availableFiles[i].name
                             });
                         } else if (availableFiles[i].name.endsWith("wig") || availableFiles[i].name.endsWith("bigWig")) {
                             wigTracks.push({
                                 type: "wig",
-                                url: this.baseUrl + availableFiles[i].path,
+                                url: this.baseUrl + availableFiles[i].path + this.queryParams,
                                 name: availableFiles[i].name
                             });
                         } else {
@@ -169,18 +170,7 @@
 
 
                 let tracks = alignmentTracks.concat(variantTracks, annotationTracks, wigTracks);
-//
-//                tracks.push({
-//                    name: "Genes",
-//                    type: "annotation",
-//                    format: "bed",
-//                    sourceType: "file",
-//                    url: "//igv.broadinstitute.org/annotations/hg19/genes/gencode.v18.collapsed.bed",
-//                    indexURL: "//igv.broadinstitute.org/annotations/hg19/genes/gencode.v18.collapsed.bed.idx",
-//                    displayMode: "EXPANDED"
-//                });
 
-                debugger
                 return tracks;
             },
 

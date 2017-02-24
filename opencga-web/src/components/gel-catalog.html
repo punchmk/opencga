@@ -84,12 +84,46 @@
                     this.sessionId = sid;
                     this.set('opencgaClient._config.sessionId', sid);
                     this._logged = true;
+
+                    this.startInterval();
+                }
+
+            },
+
+            startInterval: function() {
+                //Increment the idle time counter every minute.
+                this.interval = setInterval(timerIncrement, 60000); // 1 minute
+
+                let idleTime = 0;
+                $(document).ready(function () {
+                    //Zero the idle timer on mouse movement.
+                    $(this).mousemove(function (e) {
+                        idleTime = 0;
+                    });
+                    $(this).keypress(function (e) {
+                        idleTime = 0;
+                    });
+                });
+
+                let _this = this;
+                function timerIncrement() {
+                    idleTime++;
+                    if (idleTime >= 30) { // 30 minutes
+                        _this.logout();
+                    }
                 }
             },
+
+            clearInterval: function() {
+                clearInterval(this.interval);
+            },
+
             afterLogin: function(e) {
                 this.userId = e.detail.userId;
                 this.set('opencgaClient._config.sessionId', e.detail.sessionId);
                 this._logged = true;
+                //Increment the idle time counter every minute.
+                this.startInterval();
             },
             logout: function() {
                 var _this = this;
@@ -100,6 +134,8 @@
                         _this.opencgaClient._config.sessionId = "";
 
                         _this._logged = false;
+
+                        _this.clearInterval();
                     });
             }
         });
