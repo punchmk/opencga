@@ -18,7 +18,11 @@
         </style>
 
         <div class="center">
-
+            <div class="alert alert-danger" id="opencgaError" hidden="true">
+                <button type="button" class="close" data-dismiss="alert">x</button>
+                <strong>Error! </strong>
+                <span></span>
+            </div>
         </div>
 
         <div class="container-fluid" id="igvDiv" style="padding:5px; border:1px solid lightgray"></div>
@@ -64,10 +68,14 @@
                         }
 
                         if (paramKeys.indexOf("samples") > -1) {
-                            this.searchFiles({
+                            let query = {
                                 study: queryParams.study,
                                 sample: queryParams.samples
-                            });
+                            };
+                            if (paramKeys.indexOf("format") > -1) {
+                                query["format"] = queryParams.format.toUpperCase();
+                            }
+                            this.searchFiles(query);
                         }
 
                         if (paramKeys.indexOf("cohorts") > -1) {
@@ -75,7 +83,10 @@
                         }
 
                         if (paramKeys.indexOf("individuals") > -1) {
-
+                            this.searchSamples({
+                                study: queryParams.study,
+                                individual: queryParams.individuals
+                            })
                         }
 
                     } else if (paramKeys.indexOf("files") > -1) {
@@ -88,13 +99,58 @@
                 }
             },
 
+            showErrorAlert: function(message) {
+                $("#opencgaError").alert();
+                $("#opencgaError span")[0].textContent = message;
+                $("#opencgaError").fadeTo(2000, 500).slideUp(500, function(){
+                    $("#opencgaError").slideUp(500);
+                });
+            },
+
             searchCohorts: function(cohorts, query) {
                 query["include"] = "samples";
 
                 let _this = this;
-                this.opencgaClient.cohorts.info(cohorts, query).then(function (response) {
+                this.opencgaClient.cohorts().info(cohorts, query).then(function (response) {
                     debugger
 
+                }).catch(function (response) {
+                    _this.showErrorAlert(response.error);
+                });
+            },
+
+            searchSamples: function(query) {
+                query["include"] = "id";
+
+                let _this = this;
+                this.opencgaClient.samples().search(query).then(function (response) {
+                    let sampleIds = [];
+                    for (let i = 0; i < response.response.length; i++) {
+                        let tmpResponse = response.response[i];
+                        for (let j = 0; j < tmpResponse.result.length; j++) {
+                            sampleIds.push(tmpResponse.result[j].id);
+                        }
+                    }
+
+                    if (sampleIds.length > 0) {
+                        if (sampleIds.length > 10) {
+                            _this.showErrorAlert(sampleIds.length + " samples found for the query. Only the first 10 will be used.");
+                            sampleIds = sampleIds.slice(0, 10);
+                        }
+
+                        let queryParams = URI.parseQuery(window.location.search);
+
+                        let query = {
+                            study: queryParams.study,
+                            sample: sampleIds.join(",")
+                        };
+                        if (typeof queryParams.format !== "undefined") {
+                            query["format"] = queryParams.format.toUpperCase();
+                        }
+                        _this.searchFiles(query);
+                    }
+                }).catch(function (response) {
+                    _this.showErrorAlert(response.error);
                 });
             },
 
@@ -102,13 +158,14 @@
             infoFiles: function(files, query) {
                 // / are not allowed in the info webservices as files will be part of the path param
                 files = files.replace(/\//g, ":");
-
                 query["include"] = "path,name";
 
                 let _this = this;
                 this.opencgaClient.files().info(files, query).then(function (response) {
                     let tracks = _this.parseFileResponse(response);
                     _this.renderIGV(tracks);
+                }).catch(function (response) {
+                    _this.showErrorAlert(response.error);
                 });
             },
 
@@ -120,6 +177,8 @@
                 this.opencgaClient.files().search(query).then(function (response) {
                     let tracks = _this.parseFileResponse(response);
                     _this.renderIGV(tracks);
+                }).catch(function (response) {
+                    _this.showErrorAlert(response.error);
                 });
             },
 
@@ -134,7 +193,7 @@
                     let availableFiles = response.response[j].result;
 
                     for (let i = 0; i < availableFiles.length; i++) {
-                        availableFiles[i].path = availableFiles[i].path.replace("/", ":");
+                        availableFiles[i].path = availableFiles[i].path.replace(/\//g, ":");
 
                         if (availableFiles[i].name.endsWith("bam")) {
                             alignmentTracks.push({
@@ -168,13 +227,26 @@
                     }
                 }
 
-
                 let tracks = alignmentTracks.concat(variantTracks, annotationTracks, wigTracks);
-
                 return tracks;
             },
 
             renderIGV: function(tracks) {
+                if (tracks.length > 5) {
+                    this.showErrorAlert(tracks.length + " tracks found for the query. Only the first 5 will be used.");
+                    tracks = tracks.slice(0, 5);
+                }
+
+                tracks.push({
+                    name: "Genes",
+                    type: "annotation",
+                    format: "bed",
+                    sourceType: "file",
+                    url: "//igv.broadinstitute.org/annotations/hg19/genes/gencode.v18.collapsed.bed",
+                    indexURL: "//igv.broadinstitute.org/annotations/hg19/genes/gencode.v18.collapsed.bed.idx",
+                    displayMode: "EXPANDED"
+                });
+
                 let queryParams = URI.parseQuery(window.location.search);
 
                 let region = "chr1:13,000-14,000";

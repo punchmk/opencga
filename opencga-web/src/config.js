@@ -16,9 +16,9 @@
 
 var opencga = {
     // host: "bioinfodev.hpc.cam.ac.uk/opencga-test",
-    // host: "bio-prod-opencga-tomcat-01.gel.zone/opencga",
+    host: "bio-prod-opencga-tomcat-01.gel.zone:8080/opencga",
     // host: "bio-test-opencga-tomcat-01.gel.zone:8080/opencga",
-    host: "localhost:8080/opencga",
+    // host: "localhost:8080/opencga",
     version: "v1",
     cookiePrefix: "gel-browser",
     expiration: 30  // Minutes passed to expire the session
