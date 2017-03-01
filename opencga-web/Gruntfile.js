@@ -47,32 +47,41 @@ module.exports = function(grunt) {
                     './bower_components/uri.js/src/URI.js',
                     './bower_components/cookies-js/dist/cookies.js',
                     './bower_components/crypto-js/crypto-js.js',
-                    './lib/jsorolla/src/lib/utils.js'
+                    './bower_components/jquery-ui/jquery-ui.js'
                 ],
                 dest: '<%= build.path %>/vendors.js'
+            },
+            jsorolla: {
+                src: [
+                    './lib/jsorolla/src/lib/utils.js',
+                    './lib/jsorolla/src/lib/clients/rest-client.js',
+                    './lib/jsorolla/src/lib/clients/opencga-client-config.js',
+                    './lib/jsorolla/src/lib/clients/opencga-client.js'
+                ],
+                dest: '<%= build.path %>/jsorolla-clients.js'
             }
         },
         uglify: {
             options: {
-                banner: '/*! CellBase <%= grunt.template.today("dd-mm-yyyy") %> */\n'
+                banner: '/*! Genomics England <%= grunt.template.today("dd-mm-yyyy") %> */\n'
             },
             dist: {
                 files: {
-                    '<%= build.path %>/vendors.min.js': ['<%= build.path %>/vendors.js'],
+                    '<%= build.path %>/vendors.min.js': ['<%= build.path %>/vendors.js']
                 }
             }
         },
         copy: {
             dist: {
                 files: [
+                    {   flatten: true, expand: true, cwd: './bower_components', src: ['font-awesome/css/font-awesome.min.css'], dest: '<%= build.path %>/css' },
+                    {   flatten: true, expand: true, cwd: './bower_components', src: ['jquery-ui/themes/smoothness/jquery-ui.min.css'], dest: '<%= build.path %>/css' },
+                    {   flatten: true, expand: true, cwd: './bower_components', src: ['font-awesome/fonts/*'], dest: '<%= build.path' +
+                    ' %>/fonts' },
+                    {   expand: true, cwd: './bower_components', src: ['polymer/*'], dest: '<%= build.vendor %>' },
                     {   expand: true, cwd: 'src', src: ['index.html'], dest: '<%= build.path %>/' },
                     {   expand: true, cwd: 'src', src: ['config.js'], dest: '<%= build.path %>/' },
-                    {   expand: true, cwd: './', src: ['LICENSE'], dest: '<%= build.path %>/' },
-                    {   expand: true, cwd: './', src: [
-                        'lib/jsorolla/src/lib/clients/opencga-client-config.js',
-                        'lib/jsorolla/src/lib/clients/opencga-client.js',
-                        'lib/jsorolla/src/lib/clients/rest-client.js'],
-                        dest: '<%= build.path %>/..' },
+                    {   expand: true, cwd: './', src: ['LICENSE'], dest: '<%= build.path %>/' }
                 ]
             }
         },
@@ -90,11 +99,11 @@ module.exports = function(grunt) {
             default: {
                 options: {
                     // Task-specific options go here.
-                    stripComments: true
+                    stripComments: true,
+                    // excludes: ["./bower_components/polymer/polymer.html"]
                 },
                 files: {
-                    // Target-specific file lists and/or options go here.
-                    '<%= build.path %>/opencga-web.html': 'src/opencga-web.html'
+                    '<%= build.path %>/gel-catalog.html': 'src/gel-catalog.html'
                 }
             }
         },
@@ -113,8 +122,8 @@ module.exports = function(grunt) {
                     ]
                 },
                 files: [
-                    // {expand: true, flatten: true, src: ['<%= build.path %>/index.html'], dest: '<%= build.path %>'},
-                    // {expand: true, flatten: true, src: ['<%= build.path %>/cellbase-web.html'], dest: '<%= build.path %>'}
+                    {expand: true, flatten: true, src: ['<%= build.path %>/index.html'], dest: '<%= build.path %>'},
+                    {expand: true, flatten: true, src: ['<%= build.path %>/gel-catalog.html'], dest: '<%= build.path %>'}
                 ]
             }
         }
@@ -132,5 +141,4 @@ module.exports = function(grunt) {
 
     grunt.registerTask('default', ['clean', 'jshint', 'copy', 'concat', 'uglify', 'processhtml', 'vulcanize']);
     grunt.registerTask('cl', ['clean']);
-    // grunt.registerTask('test', ['clean']);
 };

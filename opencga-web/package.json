@@ -1,7 +1,7 @@
 {
-  "name": "opencga",
-  "version": "0.8.0-beta",
-  "description": "OpenCGA Dashboard",
+  "name": "igv",
+  "version": "0.1.0",
+  "description": "IGV API to visualize BAM and VCF files from Opencga",
   "repository": {
     "type": "git",
     "url": "https://github.com/opencb/opencga.git"

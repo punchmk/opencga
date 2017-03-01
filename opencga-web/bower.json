@@ -38,7 +38,8 @@
     "jstat": "^1.5.3",
     "font-awesome": "^4.6.3",
     "bootstrap": "^3.3.7",
-    "bootstrap-table": "^1.11.0"
+    "bootstrap-table": "^1.11.0",
+    "jquery-ui": "^1.12.1"
   },
   "resolutions": {
     "highcharts": "^5.0.0"
