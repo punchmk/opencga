@@ -237,6 +237,15 @@
                     tracks = tracks.slice(0, 5);
                 }
 
+//                tracks.push({
+//                    url: 'https://s3.amazonaws.com/igv.broadinstitute.org/data/hg38/gencode.v24.annotation.sorted.gtf.gz',
+//                    indexURL: 'https://s3.amazonaws.com/igv.broadinstitute.org/data/hg38/gencode.v24.annotation.sorted.gtf.gz.tbi',
+//                    name: 'Gencode v24',
+//                    format: 'gtf',
+//                    visibilityWindow: 10000000,
+//                    displayMode: "EXPANDED"
+//                });
+
                 tracks.push({
                     name: "Genes",
                     type: "annotation",
@@ -244,7 +253,7 @@
                     sourceType: "file",
                     url: "//igv.broadinstitute.org/annotations/hg19/genes/gencode.v18.collapsed.bed",
                     indexURL: "//igv.broadinstitute.org/annotations/hg19/genes/gencode.v18.collapsed.bed.idx",
-                    displayMode: "EXPANDED"
+
                 });
 
                 let queryParams = URI.parseQuery(window.location.search);
@@ -258,7 +267,9 @@
                     options = {
                         showNavigation: true,
                         showRuler: true,
-                        genome: "hg38",
+                        reference: {
+                            id: "hg19"
+                        },
                         locus: region,
                         tracks: tracks
                     };
