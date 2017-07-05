@@ -25,6 +25,22 @@
             </div>
         </div>
 
+        <br>
+        <div>
+            <button type="button" class="btn btn-primary" data-toggle="collapse" data-target="#urls">To standalone</button>
+            <div id="urls" class="collapse">
+                <ul class="list-group">
+                    <template is="dom-repeat" items="{{_urls}}">
+                        <li class="list-group-item">
+                            <div style="font-weight: bold">{{item.name}}</div>
+                            <div><span style="font-weight: bold">File: </span><span>{{item.file}}</span></div>
+                            <div><span style="font-weight: bold">Index: </span><span>{{item.index}}</span></div>
+                        </li>
+                    </template>
+                </ul>
+            </div>
+        </div>
+        <br>
         <div class="container-fluid" id="igvDiv" style="padding:5px; border:1px solid lightgray"></div>
 
     </template>
@@ -35,6 +51,12 @@
             properties: {
                 opencgaClient: {
                     type: Object
+                },
+                config: {
+                    type: Object
+                },
+                _urls: {
+                    type: Array
                 }
             },
             observers: [
@@ -42,6 +64,7 @@
             ],
 
             getInfo: function() {
+                this._urls = [];
                 if (typeof this.opencgaClient._config.sessionId !== "undefined" && this.opencgaClient._config.sessionId !== "") {
                     // Get the queryParams
                     let queryParams = URI.parseQuery(window.location.search);
@@ -54,6 +77,7 @@
 
                     this.baseUrl = "http://" + this.opencgaClient.getConfig().host + "/webservices/rest/v1/utils/ranges/";
                     this.queryParams = "?sid=" + this.opencgaClient.getConfig().sessionId + "&study=" + queryParams.study;
+                    this._study = queryParams.study;
 
                     let files = [];
                     if (paramKeys.indexOf("samples") > -1 || paramKeys.indexOf("cohorts") > -1 || paramKeys.indexOf("individuals") > -1) {
@@ -200,13 +224,22 @@
                                 type: "alignment",
                                 url: this.baseUrl + availableFiles[i].path + this.queryParams,
                                 indexURL: this.baseUrl + availableFiles[i].path + ".bai" + this.queryParams,
+                                visibilityWindow: 2000,
                                 name: availableFiles[i].name
                             });
+                            this.push('_urls', {
+                                name: availableFiles[i].name,
+                                file: this.baseUrl + availableFiles[i].path + this.queryParams,
+                                index: this.baseUrl + availableFiles[i].path + ".bai" + this.queryParams
+                            });
+//                            console.log("Query: " + this.baseUrl + availableFiles[i].path + this.queryParams
+//                                + " Index: " + this.baseUrl + availableFiles[i].path + ".bai" + this.queryParams);
                         } else if (availableFiles[i].name.endsWith("vcf") || availableFiles[i].name.endsWith("vcf.gz")) {
                             variantTracks.push({
                                 type: "variant",
                                 url: this.baseUrl + availableFiles[i].path + this.queryParams,
                                 indexURL: this.baseUrl + availableFiles[i].path + ".tbi" + this.queryParams,
+                                visibilityWindow: 1000000,
                                 name: availableFiles[i].name
                             });
                         } else if (availableFiles[i].name.endsWith("bed") || availableFiles[i].name.endsWith("gff")) {
@@ -237,26 +270,40 @@
                     tracks = tracks.slice(0, 5);
                 }
 
-//                tracks.push({
-//                    url: 'https://s3.amazonaws.com/igv.broadinstitute.org/data/hg38/gencode.v24.annotation.sorted.gtf.gz',
-//                    indexURL: 'https://s3.amazonaws.com/igv.broadinstitute.org/data/hg38/gencode.v24.annotation.sorted.gtf.gz.tbi',
-//                    name: 'Gencode v24',
-//                    format: 'gtf',
-//                    visibilityWindow: 10000000,
-//                    displayMode: "EXPANDED"
-//                });
-
-                tracks.push({
-                    name: "Genes",
-                    type: "annotation",
-                    format: "bed",
-                    sourceType: "file",
-                    url: "//igv.broadinstitute.org/annotations/hg19/genes/gencode.v18.collapsed.bed",
-                    indexURL: "//igv.broadinstitute.org/annotations/hg19/genes/gencode.v18.collapsed.bed.idx",
-
-                });
-
                 let queryParams = URI.parseQuery(window.location.search);
+
+                let assembly = "GRCh37";
+                if (typeof(this.config.assemblies) !== "undefined" && typeof(this.config.assemblies[queryParams.study]) !== "undefined") {
+                    assembly = this.config.assemblies[queryParams.study];
+                }
+                if (assembly !== "GRCh38") {
+                    // GRCh37
+                    tracks.push({
+                        url: 'https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/genes/gencode.v18.annotation.sorted.gtf.gz',
+                        indexURL: 'https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/genes/gencode.v18.annotation.sorted.gtf.gz.tbi',
+                        name: 'Gencode v18',
+                        format: 'gtf',
+                        visibilityWindow: 10000000,
+                        displayMode: "EXPANDED"
+                    });
+                    myReference = {
+                        id: "hg19"
+                    }
+                } else {
+                    tracks.push({
+                        url: 'https://s3.amazonaws.com/igv.broadinstitute.org/data/hg38/gencode.v24.annotation.sorted.gtf.gz',
+                        indexURL: 'https://s3.amazonaws.com/igv.broadinstitute.org/data/hg38/gencode.v24.annotation.sorted.gtf.gz.tbi',
+                        name: 'Gencode v24',
+                        format: 'gtf',
+                        visibilityWindow: 10000000,
+                        displayMode: "EXPANDED"
+                    });
+                    myReference = {
+                        fastaURL: "//igv.broadinstitute.org/genomes/seq/hg38/hg38.fa",
+                        indexURL: "//igv.broadinstitute.org/genomes/seq/hg38/hg38.fa.fai",
+                        cytobandURL: "https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg38/cytoBandIdeo.txt"
+                    }
+                }
 
                 let region = "chr1:13,000-14,000";
                 if (typeof queryParams.region !== "undefined") {
@@ -267,9 +314,7 @@
                     options = {
                         showNavigation: true,
                         showRuler: true,
-                        reference: {
-                            id: "hg19"
-                        },
+                        reference: myReference,
                         locus: region,
                         tracks: tracks
                     };
