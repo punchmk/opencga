@@ -27,7 +27,7 @@
 
         <br>
         <div>
-            <button type="button" class="btn btn-primary" data-toggle="collapse" data-target="#urls">To standalone</button>
+            <button type="button" class="btn btn-primary" data-toggle="collapse" data-target="#urls">URLs for IGV Desktop</button>
             <div id="urls" class="collapse">
                 <ul class="list-group">
                     <template is="dom-repeat" items="{{_urls}}">
@@ -272,11 +272,11 @@
 
                 let queryParams = URI.parseQuery(window.location.search);
 
-                let assembly = "GRCh37";
+                let assembly = "GRCh38";
                 if (typeof(this.config.assemblies) !== "undefined" && typeof(this.config.assemblies[queryParams.study]) !== "undefined") {
                     assembly = this.config.assemblies[queryParams.study];
                 }
-                if (assembly !== "GRCh38") {
+                if (assembly === "GRCh37") {
                     // GRCh37
                     tracks.push({
                         url: 'https://s3.amazonaws.com/igv.broadinstitute.org/annotations/hg19/genes/gencode.v18.annotation.sorted.gtf.gz',
@@ -290,6 +290,7 @@
                         id: "hg19"
                     }
                 } else {
+                    // GRCh38
                     tracks.push({
                         url: 'https://s3.amazonaws.com/igv.broadinstitute.org/data/hg38/gencode.v24.annotation.sorted.gtf.gz',
                         indexURL: 'https://s3.amazonaws.com/igv.broadinstitute.org/data/hg38/gencode.v24.annotation.sorted.gtf.gz.tbi',
