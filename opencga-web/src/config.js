@@ -1,9 +1,8 @@
 var opencga = {
-    host: "bioinfodev.hpc.cam.ac.uk/opencga-test",
+    host: "bioinfodev.hpc.cam.ac.uk/hgva-1.2.0-dev",
     version: "v1",
     assemblies: {
-        study1: "GRCh37"
-        // study1: "GRCh38"
+        illumina_platinum: "GRCh37"
     },
     cookiePrefix: "gel-browser",
     expiration: 30  // Minutes passed to expire the session

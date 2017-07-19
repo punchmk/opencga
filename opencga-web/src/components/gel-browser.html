@@ -136,7 +136,34 @@
 
                 let _this = this;
                 this.opencgaClient.cohorts().info(cohorts, query).then(function (response) {
-                    debugger
+                    let sampleIds = [];
+                    for (let i = 0; i < response.response.length; i++) {
+                        let tmpResponse = response.response[i];
+                        for (let j = 0; j < tmpResponse.result.length; j++) {
+                            let tmpCohort = tmpResponse.result[j];
+                            for (let w = 0; w < tmpCohort.samples.length; w++) {
+                                sampleIds.push(tmpCohort.samples[w].id);
+                            }
+                        }
+                    }
+
+                    if (sampleIds.length > 0) {
+//                        if (sampleIds.length > 10) {
+//                            _this.showErrorAlert(sampleIds.length + " samples found for the query. Only the first 10 will be used.");
+//                            sampleIds = sampleIds.slice(0, 10);
+//                        }
+
+                        let queryParams = URI.parseQuery(window.location.search);
+
+                        let query = {
+                            study: queryParams.study,
+                            sample: sampleIds.join(",")
+                        };
+                        if (typeof queryParams.format !== "undefined") {
+                            query["format"] = queryParams.format.toUpperCase();
+                        }
+                        _this.searchFiles(query);
+                    }
 
                 }).catch(function (response) {
                     _this.showErrorAlert(response.error);
@@ -157,10 +184,10 @@
                     }
 
                     if (sampleIds.length > 0) {
-                        if (sampleIds.length > 10) {
-                            _this.showErrorAlert(sampleIds.length + " samples found for the query. Only the first 10 will be used.");
-                            sampleIds = sampleIds.slice(0, 10);
-                        }
+//                        if (sampleIds.length > 10) {
+//                            _this.showErrorAlert(sampleIds.length + " samples found for the query. Only the first 10 will be used.");
+//                            sampleIds = sampleIds.slice(0, 10);
+//                        }
 
                         let queryParams = URI.parseQuery(window.location.search);
 
@@ -265,10 +292,10 @@
             },
 
             renderIGV: function(tracks) {
-                if (tracks.length > 5) {
-                    this.showErrorAlert(tracks.length + " tracks found for the query. Only the first 5 will be used.");
-                    tracks = tracks.slice(0, 5);
-                }
+//                if (tracks.length > 5) {
+//                    this.showErrorAlert(tracks.length + " tracks found for the query. Only the first 5 will be used.");
+//                    tracks = tracks.slice(0, 5);
+//                }
 
                 let queryParams = URI.parseQuery(window.location.search);
 
