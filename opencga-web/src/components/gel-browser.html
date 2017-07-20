@@ -24,23 +24,67 @@
                 <span></span>
             </div>
         </div>
-
         <br>
-        <div>
-            <button type="button" class="btn btn-primary" data-toggle="collapse" data-target="#urls">URLs for IGV Desktop</button>
-            <div id="urls" class="collapse">
-                <ul class="list-group">
-                    <template is="dom-repeat" items="{{_urls}}">
-                        <li class="list-group-item">
-                            <div style="font-weight: bold">{{item.name}}</div>
-                            <div><span style="font-weight: bold">File: </span><span>{{item.file}}</span></div>
-                            <div><span style="font-weight: bold">Index: </span><span>{{item.index}}</span></div>
-                        </li>
-                    </template>
-                </ul>
+
+        <div class="row">
+
+            <!-- Results collapsable div -->
+            <div class="col-sm-4">
+                <div class="panel panel-primary">
+                    <div class="panel-heading" role="tab" id="results_panel">
+                        <h4 class="panel-title">
+                            <a role="button" data-toggle="collapse" href="#collapseResultsPanel" aria-expanded="true" aria-controls="collapseResultsPanel">
+                                Available files to show
+                                <span class="caret"></span>
+                            </a>
+                        </h4>
+                    </div>
+
+                    <div id="collapseResultsPanel" class="panel-collapse collapse in" role="tabpanel" aria-labelledby="headingOne">
+                        <div class="panel-body" style="max-height: 300px; overflow-y: auto">
+                            <template is="dom-repeat" items="{{_availableFiles}}" as="sample">
+                                <div style="font-weight: bold; text-decoration: underline">{{sample.name}}</div>
+                                <template is="dom-repeat" items="{{sample.results}}" as="result">
+                                    <div style="font-weight: bold; margin-left: 5px;">{{result.name}}</div>
+                                    <template is="dom-repeat" items="{{result.files}}" as="file">
+                                        <input type="checkbox" style="margin-left: 15px; word-wrap:break-word;"
+                                               name="file-checkbox" value="{{file.name}}" data="{{file}}"> {{file.name}}<br>
+                                    </template>
+                                </template>
+                                <br>
+                            </template>
+                            <button on-tap="showInIGV" class="btn btn-primary">Show in IGV</button>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-sm-8">
+                <div class="panel panel-primary">
+                    <div class="panel-heading" role="tab" id="url_panel">
+                        <h4 class="panel-title">
+                            <a role="button" data-toggle="collapse" href="#urls" aria-expanded="true" aria-controls="urls">
+                                URLs for IGV Desktop
+                                <span class="caret"></span>
+                            </a>
+                        </h4>
+                    </div>
+
+                    <div id="urls" class="panel-collapse collapse" role="tabpanel" aria-labelledby="headingOne">
+                        <div class="panel-body" style="max-height: 300px; overflow-y: auto">
+                            <template is="dom-repeat" items="{{_urls}}">
+                                <div style="font-weight: bold; text-decoration: underline">{{item.name}}</div>
+                                <div><span style="font-weight: bold">File: </span><span style="word-wrap:break-word; display:block;">{{item.file}}</span></div>
+                                <div><span style="font-weight: bold">Index: </span><span style="word-wrap:break-word; display:block;">{{item.index}}</span></div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
-        <br>
+
+        <!-- IGV div -->
         <div class="container-fluid" id="igvDiv" style="padding:5px; border:1px solid lightgray"></div>
 
     </template>
@@ -56,6 +100,9 @@
                     type: Object
                 },
                 _urls: {
+                    type: Array
+                },
+                _availableFiles: {
                     type: Array
                 }
             },
@@ -184,10 +231,6 @@
                     }
 
                     if (sampleIds.length > 0) {
-//                        if (sampleIds.length > 10) {
-//                            _this.showErrorAlert(sampleIds.length + " samples found for the query. Only the first 10 will be used.");
-//                            sampleIds = sampleIds.slice(0, 10);
-//                        }
 
                         let queryParams = URI.parseQuery(window.location.search);
 
@@ -209,28 +252,57 @@
             infoFiles: function(files, query) {
                 // / are not allowed in the info webservices as files will be part of the path param
                 files = files.replace(/\//g, ":");
-                query["include"] = "path,name";
+                query["include"] = "path,name,format,bioformat";
+                Object.assign(query, this.config.fixedQuery);
 
                 let _this = this;
                 this.opencgaClient.files().info(files, query).then(function (response) {
-                    let tracks = _this.parseFileResponse(response);
-                    _this.renderIGV(tracks);
+                    _this.updateAvailableFiles(response);
+//                    let tracks = _this.parseFileResponse(response);
+//                    _this.renderIGV(tracks);
                 }).catch(function (response) {
                     _this.showErrorAlert(response.error);
                 });
             },
 
-            // This is the one that will be used when samples are passed in the URL
+            // This is the one that will be used when samples or cohorts are passed in the URL
             searchFiles: function(query) {
-                query["include"] = "path,name";
+                query["include"] = "path,name,format,bioformat";
+                Object.assign(query, this.config.fixedQuery);
 
                 let _this = this;
                 this.opencgaClient.files().search(query).then(function (response) {
-                    let tracks = _this.parseFileResponse(response);
-                    _this.renderIGV(tracks);
+                    _this.updateAvailableFiles(response);
+//                    let tracks = _this.parseFileResponse(response);
+//                    _this.renderIGV(tracks);
                 }).catch(function (response) {
                     _this.showErrorAlert(response.error);
                 });
+            },
+
+            updateAvailableFiles: function(response) {
+                    let mySamples = [];
+                    let formats = {};
+                    response.response.forEach(function(response) {
+                        response.result.forEach(function(file) {
+                            if (!formats.hasOwnProperty(file.format)) {
+                                formats[file.format] = [];
+                            }
+                            formats[file.format].push(file);
+                        });
+                    });
+                    let myFiles = [];
+                    Object.keys(formats).forEach(function(format) {
+                        myFiles.push({
+                            name: format,
+                            files: formats[format]
+                        });
+                    });
+                    mySamples.push({
+                        name: "NONE",
+                        results: myFiles
+                    });
+                    this._availableFiles = mySamples;
             },
 
             // It parses the file response to create an array of tracks to be loaded into IGV
@@ -291,6 +363,76 @@
                 return tracks;
             },
 
+            generateTracks: function(fileArray) {
+                this._urls = [];
+                let alignmentTracks = [];
+                let variantTracks = [];
+                let annotationTracks = [];
+                let wigTracks = [];
+
+                let _this = this;
+                fileArray.forEach(function(file) {
+
+                    file.path = file.path.replace(/\//g, ":");
+
+                    if (file.name.endsWith("bam")) {
+                        alignmentTracks.push({
+                            type: "alignment",
+                            url: _this.baseUrl + file.path + _this.queryParams,
+                            indexURL: _this.baseUrl + file.path + ".bai" + _this.queryParams,
+                            visibilityWindow: 2000,
+                            name: file.name
+                        });
+                        _this.push('_urls', {
+                            name: file.name,
+                            file: _this.baseUrl + file.path + _this.queryParams,
+                            index: _this.baseUrl + file.path + ".bai" + _this.queryParams
+                        });
+                    } else if (file.name.endsWith("vcf") || file.name.endsWith("vcf.gz")) {
+                        variantTracks.push({
+                            type: "variant",
+                            url: _this.baseUrl + file.path + _this.queryParams,
+                            indexURL: _this.baseUrl + file.path + ".tbi" + _this.queryParams,
+                            visibilityWindow: 1000000,
+                            name: file.name
+                        });
+                        _this.push('_urls', {
+                            name: file.name,
+                            file: _this.baseUrl + file.path + _this.queryParams,
+                            index: _this.baseUrl + file.path + ".tbi" + _this.queryParams
+                        });
+                    } else if (file.name.endsWith("bed") || file.name.endsWith("gff")) {
+                        annotationTracks.push({
+                            type: "annotation",
+                            url: _this.baseUrl + file.path + _this.queryParams,
+                            name: file.name
+                        });
+                    } else if (file.name.endsWith("wig") || file.name.endsWith("bigWig")) {
+                        wigTracks.push({
+                            type: "wig",
+                            url: _this.baseUrl + file.path + _this.queryParams,
+                            name: file.name
+                        });
+                    } else {
+                        console.log("File " + file.name + " ignored");
+                    }
+                });
+
+                let tracks = alignmentTracks.concat(variantTracks, annotationTracks, wigTracks);
+                return tracks;
+            },
+
+            showInIGV: function(event) {
+                event.preventDefault();
+                let inputArray = document.querySelectorAll('input[name=file-checkbox]:checked');
+                let files = [];
+                inputArray.forEach(function(input) {
+                    files.push(input.data);
+                });
+                let tracks = this.generateTracks(files);
+                this.renderIGV(tracks);
+            },
+
             renderIGV: function(tracks) {
 //                if (tracks.length > 5) {
 //                    this.showErrorAlert(tracks.length + " tracks found for the query. Only the first 5 will be used.");
@@ -346,6 +488,11 @@
                         locus: region,
                         tracks: tracks
                     };
+                try {
+                    igv.removeBrowser(div);
+                } catch(error) {
+                    console.log("Cannot remove igv component");
+                }
                 igv.createBrowser(div, options);
             }
 

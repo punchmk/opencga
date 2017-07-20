@@ -4,6 +4,9 @@ var opencga = {
     assemblies: {
         illumina_platinum: "GRCh37"
     },
+    fixedQuery: {
+        // attributes: "gelStatus=READY"
+    },
     cookiePrefix: "gel-browser",
     expiration: 30  // Minutes passed to expire the session
 };
