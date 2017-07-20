@@ -1,8 +1,8 @@
 var opencga = {
-    host: "bioinfodev.hpc.cam.ac.uk/hgva-1.2.0-dev",
+    host: "bio-prod-opencgainternal-haproxy-01.gel.zone/opencga",
     version: "v1",
     assemblies: {
-        illumina_platinum: "GRCh37"
+        1000000024: "GRCh37"
     },
     fixedQuery: {
         // attributes: "gelStatus=READY"

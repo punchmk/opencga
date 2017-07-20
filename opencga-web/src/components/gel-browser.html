@@ -47,8 +47,9 @@
                                 <template is="dom-repeat" items="{{sample.results}}" as="result">
                                     <div style="font-weight: bold; margin-left: 5px;">{{result.name}}</div>
                                     <template is="dom-repeat" items="{{result.files}}" as="file">
-                                        <input type="checkbox" style="margin-left: 15px; word-wrap:break-word;"
-                                               name="file-checkbox" value="{{file.name}}" data="{{file}}"> {{file.name}}<br>
+                                        <input type="checkbox" style="margin-left: 15px;"
+                                               name="file-checkbox" value="{{file.name}}" data="{{file}}">
+                                        <span style="word-wrap:break-word;">{{file.name}}</span><br>
                                     </template>
                                 </template>
                                 <br>
@@ -99,6 +100,10 @@
                 config: {
                     type: Object
                 },
+                _formats: {
+                    type: String,
+                    value: "VCF,BAM"
+                },
                 _urls: {
                     type: Array
                 },
@@ -120,6 +125,9 @@
                     if (paramKeys.indexOf("study") === -1) {
                         // TODO: RETURN BIG ERROR !
                         return;
+                    }
+                    if (paramKeys.indexOf("format") > -1) {
+                        this.format = queryParams.format;
                     }
 
                     this.baseUrl = "http://" + this.opencgaClient.getConfig().host + "/webservices/rest/v1/utils/ranges/";
@@ -143,9 +151,6 @@
                                 study: queryParams.study,
                                 sample: queryParams.samples
                             };
-                            if (paramKeys.indexOf("format") > -1) {
-                                query["format"] = queryParams.format.toUpperCase();
-                            }
                             this.searchFiles(query);
                         }
 
@@ -189,16 +194,12 @@
                         for (let j = 0; j < tmpResponse.result.length; j++) {
                             let tmpCohort = tmpResponse.result[j];
                             for (let w = 0; w < tmpCohort.samples.length; w++) {
-                                sampleIds.push(tmpCohort.samples[w].id);
+                                sampleIds.push(tmpCohort.samples[w]);
                             }
                         }
                     }
 
                     if (sampleIds.length > 0) {
-//                        if (sampleIds.length > 10) {
-//                            _this.showErrorAlert(sampleIds.length + " samples found for the query. Only the first 10 will be used.");
-//                            sampleIds = sampleIds.slice(0, 10);
-//                        }
 
                         let queryParams = URI.parseQuery(window.location.search);
 
@@ -252,6 +253,7 @@
             infoFiles: function(files, query) {
                 // / are not allowed in the info webservices as files will be part of the path param
                 files = files.replace(/\//g, ":");
+                query["format"] = this._formats.toUpperCase();
                 query["include"] = "path,name,format,bioformat";
                 Object.assign(query, this.config.fixedQuery);
 
@@ -267,6 +269,7 @@
 
             // This is the one that will be used when samples or cohorts are passed in the URL
             searchFiles: function(query) {
+                query["format"] = this._formats.toUpperCase();
                 query["include"] = "path,name,format,bioformat";
                 Object.assign(query, this.config.fixedQuery);
 
