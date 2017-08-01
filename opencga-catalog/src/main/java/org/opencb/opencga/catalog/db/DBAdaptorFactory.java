@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,15 @@
 
 package org.opencb.opencga.catalog.db;
 
-import org.opencb.opencga.catalog.config.Admin;
-import org.opencb.opencga.catalog.config.Configuration;
+import org.opencb.commons.datastore.core.ObjectMap;
+import org.opencb.commons.datastore.mongodb.MongoDBCollection;
+import org.opencb.opencga.core.config.Admin;
+import org.opencb.opencga.core.config.Configuration;
 import org.opencb.opencga.catalog.db.api.*;
 import org.opencb.opencga.catalog.exceptions.CatalogDBException;
 import org.opencb.opencga.catalog.exceptions.CatalogException;
+
+import java.util.Map;
 
 /**
  * Created by hpccoll1 on 19/06/15.
@@ -56,6 +60,8 @@ public interface DBAdaptorFactory {
      */
     void createIndexes() throws CatalogDBException;
 
+    ObjectMap getDatabaseStatus();
+
     /**
      * Removes the catalog database.
      *
@@ -88,4 +94,10 @@ public interface DBAdaptorFactory {
     DatasetDBAdaptor getCatalogDatasetDBAdaptor();
 
     PanelDBAdaptor getCatalogPanelDBAdaptor();
+
+    FamilyDBAdaptor getCatalogFamilyDBAdaptor();
+
+    ClinicalAnalysisDBAdaptor getClinicalAnalysisDBAdaptor();
+
+    Map<String, MongoDBCollection> getMongoDBCollectionMap();
 }

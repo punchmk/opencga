@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,7 +48,7 @@ public class VariantHbaseTransformTaskTest {
         Configuration conf = new Configuration();
         VariantSource source = new VariantSource("1","1", "1","1");
         VcfMeta vs = new VcfMeta(source);
-        ArchiveHelper helper = new ArchiveHelper(conf, vs);
+        ArchiveTableHelper helper = new ArchiveTableHelper(conf, vs);
         ParallelTaskRunner.Task<Variant, VcfSliceProtos.VcfSlice> task = new VariantHbaseTransformTask(helper, null);
         ParallelTaskRunner.Config config = ParallelTaskRunner.Config.builder()
                 .setNumTasks(1)
@@ -68,7 +68,7 @@ public class VariantHbaseTransformTaskTest {
         Configuration conf = new Configuration();
         VariantSource source = new VariantSource("1","1", "1","1");
         VcfMeta vs = new VcfMeta(source);
-        ArchiveHelper helper = new ArchiveHelper(conf, vs);
+        ArchiveTableHelper helper = new ArchiveTableHelper(conf, vs);
         ParallelTaskRunner.Task<Variant, VcfSliceProtos.VcfSlice> task = new VariantHbaseTransformTask(helper, null);
 
 

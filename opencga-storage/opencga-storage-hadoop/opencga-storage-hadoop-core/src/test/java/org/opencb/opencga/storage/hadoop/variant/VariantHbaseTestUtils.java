@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,20 +39,23 @@ import org.opencb.commons.datastore.core.Query;
 import org.opencb.commons.datastore.core.QueryOptions;
 import org.opencb.opencga.core.common.TimeUtils;
 import org.opencb.opencga.storage.core.StoragePipelineResult;
+import org.opencb.opencga.storage.core.metadata.FileStudyConfigurationAdaptor;
 import org.opencb.opencga.storage.core.metadata.StudyConfiguration;
-import org.opencb.opencga.storage.core.metadata.FileStudyConfigurationManager;
-import org.opencb.opencga.storage.core.variant.VariantStorageEngine;
 import org.opencb.opencga.storage.core.variant.VariantStorageBaseTest;
-import org.opencb.opencga.storage.core.variant.adaptors.VariantDBAdaptor;
+import org.opencb.opencga.storage.core.variant.VariantStorageEngine;
 import org.opencb.opencga.storage.core.variant.adaptors.VariantDBIterator;
+import org.opencb.opencga.storage.core.variant.adaptors.VariantQueryParam;
 import org.opencb.opencga.storage.core.variant.annotation.VariantAnnotationManager;
 import org.opencb.opencga.storage.hadoop.utils.HBaseManager;
 import org.opencb.opencga.storage.hadoop.variant.adaptors.VariantHadoopDBAdaptor;
-import org.opencb.opencga.storage.hadoop.variant.archive.ArchiveHelper;
+import org.opencb.opencga.storage.hadoop.variant.archive.ArchiveTableHelper;
 import org.opencb.opencga.storage.hadoop.variant.archive.VariantHadoopArchiveDBIterator;
+import org.opencb.opencga.storage.hadoop.variant.converters.HBaseToVariantConverter;
 import org.opencb.opencga.storage.hadoop.variant.index.VariantTableStudyRow;
 import org.opencb.opencga.storage.hadoop.variant.index.phoenix.PhoenixHelper;
 import org.opencb.opencga.storage.hadoop.variant.index.phoenix.VariantPhoenixHelper;
+import org.opencb.opencga.storage.hadoop.variant.index.phoenix.VariantPhoenixKeyFactory;
+import org.opencb.opencga.storage.hadoop.variant.models.protobuf.ComplexVariant;
 import org.opencb.opencga.storage.hadoop.variant.models.protobuf.VariantTableStudyRowsProto;
 
 import java.io.*;
@@ -61,9 +64,11 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static org.opencb.opencga.storage.core.variant.VariantStorageBaseTest.getTmpRootDir;
 import static org.opencb.opencga.storage.hadoop.variant.HadoopVariantStorageTest.configuration;
+import static org.opencb.opencga.storage.hadoop.variant.index.phoenix.VariantPhoenixHelper.COLUMN_KEY_SEPARATOR;
 
 /**
  *  Utility class for VariantStorage hadoop tests
@@ -92,20 +97,20 @@ public class VariantHbaseTestUtils {
     public static VariantHadoopDBAdaptor printVariantsFromArchiveTable(VariantHadoopDBAdaptor dbAdaptor,
                                                                        StudyConfiguration studyConfiguration, PrintStream out) throws Exception {
         GenomeHelper helper = dbAdaptor.getGenomeHelper();
-        helper.getHBaseManager().act(HadoopVariantStorageEngine.getArchiveTableName(studyConfiguration.getStudyId(), dbAdaptor.getConfiguration()), table -> {
+        dbAdaptor.getHBaseManager().act(HadoopVariantStorageEngine.getArchiveTableName(studyConfiguration.getStudyId(), dbAdaptor.getConfiguration()), table -> {
             for (Result result : table.getScanner(helper.getColumnFamily())) {
                 GenomeHelper.getVariantColumns(result.rawCells()).stream()
                         .filter(c -> Bytes.startsWith(CellUtil.cloneFamily(c), helper.getColumnFamily()))
                         .forEach(c -> {
-                    try {
-                        byte[] value = CellUtil.cloneValue(c);
-                        if (value != null) {
-                            out.println(VariantTableStudyRowsProto.parseFrom(value));
-                        }
-                    } catch (Exception e) {
-                        out.println("e.getMessage() = " + e.getMessage());
-                    }
-                });
+                            out.println("-----------------");
+                            out.println(Bytes.toString(CellUtil.cloneRow(c)) + " : " + Bytes.toString(CellUtil.cloneQualifier(c)));
+                            try {
+                                byte[] value = CellUtil.cloneValue(c);
+                                out.println(VariantTableStudyRowsProto.parseFrom(value));
+                            } catch (Exception e) {
+                                e.printStackTrace(out);
+                            }
+                        });
 
             }
             return 0;
@@ -141,7 +146,14 @@ public class VariantHbaseTestUtils {
                 if (Bytes.toString(result.getRow()).startsWith(genomeHelper.getMetaRowKeyString())) {
                     continue;
                 }
-                Variant variant = genomeHelper.extractVariantFromVariantRowKey(result.getRow());
+                Variant variant;
+                try {
+                    variant = VariantPhoenixKeyFactory.extractVariantFromVariantRowKey(result.getRow());
+                } catch (RuntimeException e) {
+                    os.println(Arrays.toString(result.getRow()));
+                    os.println("--------------------");
+                    continue;
+                }
                 os.println("Variant = " + variant);
                 for (Map.Entry<byte[], byte[]> entry : result.getFamilyMap(genomeHelper.getColumnFamily()).entrySet()) {
                     String key = Bytes.toString(entry.getKey());
@@ -150,35 +162,50 @@ public class VariantHbaseTestUtils {
                         os.println("\t" + key + " = " + length(entry.getValue()) + ", "
                                 + column.getPDataType().toObject(entry.getValue()));
                     } else if (key.endsWith(VariantPhoenixHelper.STATS_PROTOBUF_SUFIX)
-                            || key.endsWith("_" + VariantTableStudyRow.FILTER_OTHER)
-                            || key.endsWith("_" + VariantTableStudyRow.COMPLEX)) {
+                            || key.endsWith(COLUMN_KEY_SEPARATOR + VariantTableStudyRow.FILTER_OTHER)) {
                         os.println("\t" + key + " = " + length(entry.getValue()) + ", " + Arrays.toString(entry.getValue()));
+                    } else if (key.endsWith(COLUMN_KEY_SEPARATOR + VariantTableStudyRow.COMPLEX)) {
+                        try {
+                            String string = ComplexVariant.parseFrom(entry.getValue())
+                                    .getSecondaryAlternatesList()
+                                    .stream()
+                                    .map(a -> a.getChromosome() + ':' + a.getStart() + ':' + a.getReference() + ':' + a.getAlternate())
+                                    .collect(Collectors.joining(",", "[", "]"));
+                            os.println("\t" + key + " = " + length(entry.getValue()) + ", " + string);
+                        } catch (Exception e) {
+                            os.println("\t" + key + " = " + length(entry.getValue()) + ", " + Arrays.toString(entry.getValue()) + " EXCEPTION " + e.getMessage());
+                        }
                     } else if (key.startsWith(VariantPhoenixHelper.POPULATION_FREQUENCY_PREFIX)) {
                         os.println("\t" + key + " = " + length(entry.getValue()) + ", " + PFloatArray.INSTANCE.toObject(entry.getValue()));
-                    } else if (key.endsWith("_" + VariantTableStudyRow.HET_REF)
-                            || key.endsWith("_" + VariantTableStudyRow.HOM_VAR)
-                            || key.endsWith("_" + VariantTableStudyRow.NOCALL)
-                            || key.endsWith("_" + VariantTableStudyRow.OTHER)) {
+                    } else if (key.endsWith(COLUMN_KEY_SEPARATOR + VariantTableStudyRow.HET_REF)
+                            || key.endsWith(COLUMN_KEY_SEPARATOR + VariantTableStudyRow.HOM_VAR)
+                            || key.endsWith(COLUMN_KEY_SEPARATOR + VariantTableStudyRow.NOCALL)
+                            || key.endsWith(COLUMN_KEY_SEPARATOR + VariantTableStudyRow.OTHER)) {
                         os.println("\t" + key + " = " +  PUnsignedIntArray.INSTANCE.toObject(entry.getValue()));
-                    } else if (key.endsWith("_" + VariantTableStudyRow.HOM_REF)
-                            || key.endsWith("_" + VariantTableStudyRow.CALL_CNT)
-                            || key.endsWith("_" + VariantTableStudyRow.PASS_CNT)) {
+                    } else if (key.endsWith(COLUMN_KEY_SEPARATOR + VariantTableStudyRow.HOM_REF)
+                            || key.endsWith(COLUMN_KEY_SEPARATOR + VariantTableStudyRow.CALL_CNT)
+                            || key.endsWith(COLUMN_KEY_SEPARATOR + VariantTableStudyRow.PASS_CNT)) {
                         os.println("\t" + key + " = " + PUnsignedInt.INSTANCE.toObject(entry.getValue()));
-                    } else if (key.endsWith(VariantPhoenixHelper.MAF_SUFIX)
-                            || key.endsWith(VariantPhoenixHelper.MGF_SUFIX)) {
-                        os.println("\t" + key + " = " + PFloat.INSTANCE.toObject(entry.getValue()));
-                    } else if (entry.getValue().length == 4) {
-                        Object o = null;
-                        try {
-                            o = PUnsignedInt.INSTANCE.toObject(entry.getValue());
-                        } catch (IllegalDataException ignore) {}
-                        os.println("\t" + key + " = "
-                                + PInteger.INSTANCE.toObject(entry.getValue()) + " , "
-                                + o + " , "
-                                + PFloat.INSTANCE.toObject(entry.getValue()) + " , ");
+                    } else if (key.endsWith(VariantPhoenixHelper.SAMPLE_DATA_SUFIX)) {
+                        os.println("\t" + key + " = " + PVarcharArray.INSTANCE.toObject(entry.getValue()));
                     } else {
-                        os.println("\t" + key + " ~ " + length(entry.getValue()) + ", "
-                                + Bytes.toString(entry.getValue()));
+                        if (key.endsWith(VariantPhoenixHelper.MAF_SUFIX)
+                                || key.endsWith(VariantPhoenixHelper.MGF_SUFIX)) {
+                            os.println("\t" + key + " = " + PFloat.INSTANCE.toObject(entry.getValue()));
+                        } else if (entry.getValue().length == 4) {
+                            Object o = null;
+                            try {
+                                o = PUnsignedInt.INSTANCE.toObject(entry.getValue());
+                            } catch (IllegalDataException ignore) {
+                            }
+                            os.println("\t" + key + " = "
+                                    + PInteger.INSTANCE.toObject(entry.getValue()) + " , "
+                                    + o + " , "
+                                    + PFloat.INSTANCE.toObject(entry.getValue()) + " , ");
+                        } else {
+                            os.println("\t" + key + " ~ " + length(entry.getValue()) + ", "
+                                    + Bytes.toString(entry.getValue()));
+                        }
                     }
 
                 }
@@ -233,11 +260,11 @@ public class VariantHbaseTestUtils {
                                                            StudyConfiguration studyConfiguration, int fileId, OutputStream os) throws Exception {
         VariantHadoopArchiveDBIterator archive = (VariantHadoopArchiveDBIterator) dbAdaptor.iterator(
                 new Query()
-                        .append(VariantDBAdaptor.VariantQueryParams.STUDIES.key(), studyConfiguration.getStudyId())
-                        .append(VariantDBAdaptor.VariantQueryParams.FILES.key(), fileId),
+                        .append(VariantQueryParam.STUDIES.key(), studyConfiguration.getStudyId())
+                        .append(VariantQueryParam.FILES.key(), fileId),
                 new QueryOptions("archive", true));
 
-        ArchiveHelper archiveHelper = dbAdaptor.getArchiveHelper(studyConfiguration.getStudyId(), fileId);
+        ArchiveTableHelper archiveHelper = dbAdaptor.getArchiveHelper(studyConfiguration.getStudyId(), fileId);
         for (Result result : archive.getResultScanner()) {
             byte[] value = result.getValue(archiveHelper.getColumnFamily(), archiveHelper.getColumn());
             VcfSliceProtos.VcfSlice vcfSlice = VcfSliceProtos.VcfSlice.parseFrom(value);
@@ -268,11 +295,14 @@ public class VariantHbaseTestUtils {
     }
 
     public static void printVariants(StudyConfiguration studyConfiguration, VariantHadoopDBAdaptor dbAdaptor, Path outDir) throws Exception {
-        FileStudyConfigurationManager.write(studyConfiguration, outDir.resolve("study_configuration.json"));
+        boolean old = HBaseToVariantConverter.isFailOnWrongVariants();
+        HBaseToVariantConverter.setFailOnWrongVariants(false);
+        FileStudyConfigurationAdaptor.write(studyConfiguration, outDir.resolve("study_configuration.json"));
         printVariantsFromArchiveTable(dbAdaptor, studyConfiguration, outDir);
         printVariantsFromVariantsTable(dbAdaptor, outDir);
         printVariantsFromDBAdaptor(dbAdaptor, outDir);
         printArchiveTable(studyConfiguration, dbAdaptor, outDir);
+        HBaseToVariantConverter.setFailOnWrongVariants(old);
     }
 
     public static void removeFile(HadoopVariantStorageEngine variantStorageManager, String dbName, int fileId,
@@ -286,7 +316,7 @@ public class VariantHbaseTestUtils {
 
         variantStorageManager.getConfiguration().getStorageEngine(variantStorageManager.getStorageEngineId()).getVariant().getOptions()
                 .putAll(params);
-        variantStorageManager.dropFile(studyConfiguration.getStudyName(), fileId);
+        variantStorageManager.removeFile(studyConfiguration.getStudyName(), fileId);
         studyConfiguration.copy(
                 variantStorageManager
                         .getDBAdaptor()
@@ -305,7 +335,7 @@ public class VariantHbaseTestUtils {
                 .append(VariantStorageEngine.Options.STUDY_ID.key(), studyConfiguration.getStudyId())
                 .append(VariantStorageEngine.Options.STUDY_NAME.key(), studyConfiguration.getStudyName())
                 .append(VariantStorageEngine.Options.DB_NAME.key(), dbName).append(VariantStorageEngine.Options.ANNOTATE.key(), false)
-                .append(VariantAnnotationManager.SPECIES, "hsapiens").append(VariantAnnotationManager.ASSEMBLY, "GRc37")
+                .append(VariantAnnotationManager.SPECIES, "hsapiens").append(VariantAnnotationManager.ASSEMBLY, "GRch37")
                 .append(VariantStorageEngine.Options.CALCULATE_STATS.key(), false)
                 .append(HadoopVariantStorageEngine.HADOOP_LOAD_DIRECT, true)
                 .append(HadoopVariantStorageEngine.HADOOP_LOAD_ARCHIVE, loadArchive)

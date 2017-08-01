@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,11 +22,14 @@ import org.opencb.commons.datastore.core.ObjectMap;
 import org.opencb.commons.datastore.core.Query;
 import org.opencb.commons.datastore.core.QueryOptions;
 import org.opencb.commons.datastore.core.QueryResult;
+import org.opencb.opencga.catalog.db.api.DBIterator;
 import org.opencb.opencga.catalog.db.api.JobDBAdaptor;
 import org.opencb.opencga.catalog.exceptions.CatalogException;
 import org.opencb.opencga.catalog.managers.AbstractManager;
+import org.opencb.opencga.catalog.models.File;
 import org.opencb.opencga.catalog.models.Job;
 import org.opencb.opencga.catalog.models.Tool;
+import org.opencb.opencga.catalog.models.acls.AclParams;
 import org.opencb.opencga.catalog.models.acls.permissions.JobAclEntry;
 
 import javax.annotation.Nullable;
@@ -110,33 +113,18 @@ public interface IJobManager extends ResourceManager<Long, Job> {
     List<QueryResult<Job>> delete(String ids, @Nullable String studyStr, QueryOptions options, String sessionId)
             throws CatalogException, IOException;
 
-    /**
-     * Retrieve the job Acls for the given members in the job.
-     *
-     * @param jobStr Job id of which the acls will be obtained.
-     * @param members userIds/groupIds for which the acls will be retrieved. When this is null, it will obtain all the acls.
-     * @param sessionId Session of the user that wants to retrieve the acls.
-     * @return A queryResult containing the job acls.
-     * @throws CatalogException when the userId does not have permissions (only the users with an "admin" role will be able to do this),
-     * the job id is not valid or the members given do not exist.
-     */
-    QueryResult<JobAclEntry> getAcls(String jobStr, List<String> members, String sessionId) throws CatalogException;
-    default List<QueryResult<JobAclEntry>> getAcls(List<String> jobIds, List<String> members, String sessionId) throws CatalogException {
-        List<QueryResult<JobAclEntry>> result = new ArrayList<>(jobIds.size());
-        for (String jobId : jobIds) {
-            result.add(getAcls(jobId, members, sessionId));
-        }
-        return result;
-    }
-
     QueryResult<ObjectMap> visit(long jobId, String sessionId) throws CatalogException;
 
     QueryResult<Job> create(long studyId, String name, String toolName, String description, String executor, Map<String, String> params,
-                            String commandLine, URI tmpOutDirUri, long outDirId, List<Long> inputFiles, List<Long> outputFiles,
+                            String commandLine, URI tmpOutDirUri, long outDirId, List<File> inputFiles, List<File> outputFiles,
                             Map<String, Object> attributes, Map<String, Object> resourceManagerAttributes, Job.JobStatus status,
                             long startTime, long endTime, QueryOptions options, String sessionId) throws CatalogException;
 
     QueryResult<Job> get(long studyId, Query query, QueryOptions options, String sessionId) throws CatalogException;
+
+    DBIterator<Job> iterator(long studyId, Query query, QueryOptions options, String sessionId) throws CatalogException;
+
+    QueryResult<Job> count(String studyStr, Query query, String sessionId) throws CatalogException;
 
     URI createJobOutDir(long studyId, String dirName, String sessionId) throws CatalogException;
 
@@ -196,7 +184,9 @@ public interface IJobManager extends ResourceManager<Long, Job> {
     }
 
     QueryResult<Job> queue(long studyId, String jobName, String description, String executable, Job.Type type, Map<String, String> params,
-                           List<Long> input, List<Long> output, long outDirId, String userId, Map<String, Object> attributes)
+                           List<File> input, List<File> output, File outDir, String userId, Map<String, Object> attributes)
             throws CatalogException;
 
+    List<QueryResult<JobAclEntry>> updateAcl(String job, String studyStr, String memberId, AclParams aclParams, String sessionId)
+            throws CatalogException;
 }

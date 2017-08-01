@@ -1,3 +1,19 @@
+/*
+ * Copyright 2015-2017 OpenCB
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.opencb.opencga.client.rest.catalog;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -42,10 +58,6 @@ public abstract class CatalogClient<T, A> extends AbstractParentClient {
         }
     }
 
-    public QueryResponse<Long> count(Query query) throws IOException {
-        return execute(category, "count", query, GET, Long.class);
-    }
-
     public QueryResponse<T> get(String id, ObjectMap params) throws IOException {
         return execute(category, id, "info", params, GET, clazz);
     }
@@ -53,6 +65,12 @@ public abstract class CatalogClient<T, A> extends AbstractParentClient {
     public QueryResponse<T> search(Query query, QueryOptions options) throws IOException {
         ObjectMap myQuery = new ObjectMap(query);
         myQuery.putAll(options);
+        return execute(category, "search", myQuery, GET, clazz);
+    }
+
+    public QueryResponse<T> count(Query query) throws IOException {
+        ObjectMap myQuery = new ObjectMap(query);
+        myQuery.put("count", true);
         return execute(category, "search", myQuery, GET, clazz);
     }
 
@@ -80,42 +98,10 @@ public abstract class CatalogClient<T, A> extends AbstractParentClient {
         return execute(category, id, "acl", params, GET, aclClass);
     }
 
-    public QueryResponse<A> getAcl(String id, String memberId, ObjectMap params) throws CatalogException, IOException {
-        return execute(category, id, "acl", memberId, "info", params, GET, aclClass);
-    }
-
-    public QueryResponse<A> createAcl(String id, String members, ObjectMap params) throws CatalogException, IOException {
-        ObjectMap myParams;
-        params = addParamsToObjectMap(params, "members", members);
-        if (params.containsKey("study")) {
-            String study = params.getString("study");
-            params.remove("study");
-            myParams = new ObjectMap()
-                    .append("study", study)
-                    .append("body", params);
-        } else {
-            myParams = new ObjectMap("body", params);
-        }
-        return execute(category, id, "acl", null, "create", myParams, POST, aclClass);
-    }
-
-    public QueryResponse<A> deleteAcl(String id, String memberId, ObjectMap params) throws CatalogException, IOException {
-        return execute(category, id, "acl", memberId, "delete", params, GET, aclClass);
-    }
-
-    public QueryResponse<A> updateAcl(String id, String memberId, ObjectMap params) throws CatalogException, IOException {
-        ObjectMap myParams;
-        if (params.containsKey("study")) {
-            String study = params.getString("study");
-            params.remove("study");
-            myParams = new ObjectMap()
-                    .append("study", study)
-                    .append("body", params);
-        } else {
-            myParams = new ObjectMap("body", params);
-        }
-
-        return execute(category, id, "acl", memberId, "update", myParams, POST, aclClass);
+    public QueryResponse<A> updateAcl(String memberId, ObjectMap queryParams, ObjectMap bodyParams) throws CatalogException, IOException {
+        ObjectMap myParams = new ObjectMap(queryParams);
+        myParams.put("body", bodyParams);
+        return execute(category, null, "acl", memberId, "update", myParams, POST, aclClass);
     }
 
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -60,7 +60,7 @@ public class PluginFactoryTest {
 
         OpenCGAAnalysis testPlugin = PluginFactory.get().getPlugin(TestAnalysis.PLUGIN_ID);
         assertEquals(TestAnalysis.class, testPlugin.getClass());
-        testPlugin.init(LoggerFactory.getLogger(OpenCGAAnalysis.class), new ObjectMap(TestAnalysis.PARAM_1, "Hello").append(TestAnalysis.ERROR, false), null, null, -1, null);
+        testPlugin.init(LoggerFactory.getLogger(OpenCGAAnalysis.class), new ObjectMap(TestAnalysis.PARAM_1, "Hello").append(TestAnalysis.ERROR, false), null, null, -1, null, null);
         int run = testPlugin.run();
         assertEquals(run, 0);
     }
@@ -72,7 +72,7 @@ public class PluginFactoryTest {
 
         OpenCGAAnalysis testPlugin = PluginFactory.get().getPlugin(TestAnalysis2.ID);
         assertEquals(TestAnalysis2.class, testPlugin.getClass());
-        testPlugin.init(LoggerFactory.getLogger(OpenCGAAnalysis.class), new ObjectMap(TestAnalysis.PARAM_1, "Hello World!").append(TestAnalysis.ERROR, false), null, null, -1, null);
+        testPlugin.init(LoggerFactory.getLogger(OpenCGAAnalysis.class), new ObjectMap(TestAnalysis.PARAM_1, "Hello World!").append(TestAnalysis.ERROR, false), null, null, -1, null, null);
         int run = testPlugin.run();
         assertEquals(run, 0);
         assertEquals(TestAnalysis2.ID, testPlugin.getManifest().getId());

@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 package org.opencb.opencga.storage.core.variant.adaptors;
 
 import org.opencb.commons.datastore.core.Query;
-import org.opencb.opencga.storage.core.variant.adaptors.VariantDBAdaptor.VariantQueryParams;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -53,11 +52,11 @@ public class VariantQueryException extends IllegalArgumentException {
         return this;
     }
 
-    public static VariantQueryException malformedParam(VariantQueryParams queryParam, String value) {
+    public static VariantQueryException malformedParam(VariantQueryParam queryParam, String value) {
         return malformedParam(queryParam, value, "Expected: " + queryParam.description());
     }
 
-    public static VariantQueryException malformedParam(VariantQueryParams queryParam, String value, String message) {
+    public static VariantQueryException malformedParam(VariantQueryParam queryParam, String value, String message) {
         return new VariantQueryException("Malformed \"" + queryParam.key() + "\" query : \"" + value + "\". "
                 +  message);
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ public class CatalogAnnotationsValidatorTest {
     public static final Variable stringList = new Variable(
             "stringList", "", Variable.VariableType.TEXT, null, true, true, null, 0, null, null, null, null);
     public static final Variable numberList = new Variable(
-            "numberList", "", Variable.VariableType.NUMERIC, null, true, true, null, 0, null, null, null, null);
+            "numberList", "", Variable.VariableType.DOUBLE, null, true, true, null, 0, null, null, null, null);
     public static final Variable object = new Variable(
             "object", "", Variable.VariableType.OBJECT, null, true, false, null, 0, null, null,
             new HashSet<>(Arrays.<Variable>asList(string, numberList)), null);
@@ -183,7 +183,7 @@ public class CatalogAnnotationsValidatorTest {
                 new Annotation("K", "V"),
                 new Annotation("K2", "V2"),
                 new Annotation("K4", false)));
-        AnnotationSet annotationSet = new AnnotationSet("", 0, annotations, "", Collections.emptyMap());
+        AnnotationSet annotationSet = new AnnotationSet("", 0, annotations, "", 1, Collections.emptyMap());
         Map<String, Object> newAnnotations = new ObjectMap()
                 .append("K", "newValue")        //Modify
                 .append("K2", null)             //Delete

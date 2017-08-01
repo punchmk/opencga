@@ -1,3 +1,19 @@
+/*
+ * Copyright 2015-2017 OpenCB
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.opencb.opencga.storage.core.variant.io;
 
 import org.junit.Before;
@@ -7,7 +23,7 @@ import org.opencb.commons.datastore.core.QueryOptions;
 import org.opencb.opencga.storage.core.config.StorageConfiguration;
 import org.opencb.opencga.storage.core.variant.VariantStorageBaseTest;
 import org.opencb.opencga.storage.core.variant.VariantStorageEngine;
-import org.opencb.opencga.storage.core.variant.dummy.DummyStudyConfigurationManager;
+import org.opencb.opencga.storage.core.variant.dummy.DummyStudyConfigurationAdaptor;
 import org.opencb.opencga.storage.core.variant.dummy.DummyVariantStorageEngine;
 import org.opencb.opencga.storage.core.variant.io.VariantWriterFactory.VariantOutputFormat;
 
@@ -30,7 +46,7 @@ public class VariantExporterTest extends VariantStorageBaseTest {
 
     @Before
     public void setUp() throws Exception {
-        runDefaultETL(smallInputUri, variantStorageManager, newStudyConfiguration());
+        runDefaultETL(smallInputUri, variantStorageEngine, newStudyConfiguration());
     }
 
     @Override
@@ -45,12 +61,12 @@ public class VariantExporterTest extends VariantStorageBaseTest {
 
     @Override
     public void clearDB(String dbName) throws Exception {
-        DummyStudyConfigurationManager.clear();
+        DummyStudyConfigurationAdaptor.clear();
     }
 
     @Test
     public void exportStudyTest() throws Exception {
-        variantStorageManager.exportData(null, VariantOutputFormat.VCF, DB_NAME, new Query(), new QueryOptions());
+        variantStorageEngine.exportData(null, VariantOutputFormat.VCF, new Query(), new QueryOptions());
         // It may happen that the VcfExporter closes the StandardOutput.
         // Check System.out is not closed
         System.out.println(getClass().getSimpleName() + ": System out not closed!");
@@ -59,7 +75,7 @@ public class VariantExporterTest extends VariantStorageBaseTest {
     @Test
     public void exportStudyJsonTest() throws Exception {
         URI output = newOutputUri().resolve("variant.json.gz");
-        variantStorageManager.exportData(output, VariantOutputFormat.JSON_GZ, DB_NAME, new Query(), new QueryOptions());
+        variantStorageEngine.exportData(output, VariantOutputFormat.JSON_GZ, new Query(), new QueryOptions());
 
         System.out.println("output = " + output);
         assertTrue(Paths.get(output).toFile().exists());

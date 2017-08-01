@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,15 +33,10 @@ public class PanelCommandOptions {
     public InfoCommandOptions infoCommandOptions;
 
     public AclCommandOptions.AclsCommandOptions aclsCommandOptions;
-    public AclCommandOptions.AclsCreateCommandOptions aclsCreateCommandOptions;
-    public AclCommandOptions.AclsMemberDeleteCommandOptions aclsMemberDeleteCommandOptions;
-    public AclCommandOptions.AclsMemberInfoCommandOptions aclsMemberInfoCommandOptions;
-    public AclCommandOptions.AclsMemberUpdateCommandOptions aclsMemberUpdateCommandOptions;
+    public AclCommandOptions.AclsUpdateCommandOptions aclsUpdateCommandOptions;
 
     public JCommander jCommander;
     public GeneralCliOptions.CommonCommandOptions commonCommandOptions;
-
-    private AclCommandOptions aclCommandOptions;
 
     public PanelCommandOptions(GeneralCliOptions.CommonCommandOptions commonCommandOptions, JCommander jCommander) {
 
@@ -51,12 +46,9 @@ public class PanelCommandOptions {
         this.createCommandOptions = new CreateCommandOptions();
         this.infoCommandOptions = new InfoCommandOptions();
 
-        aclCommandOptions = new AclCommandOptions(commonCommandOptions);
+        AclCommandOptions aclCommandOptions = new AclCommandOptions(commonCommandOptions);
         this.aclsCommandOptions = aclCommandOptions.getAclsCommandOptions();
-        this.aclsCreateCommandOptions = aclCommandOptions.getAclsCreateCommandOptions();
-        this.aclsMemberDeleteCommandOptions = aclCommandOptions.getAclsMemberDeleteCommandOptions();
-        this.aclsMemberInfoCommandOptions = aclCommandOptions.getAclsMemberInfoCommandOptions();
-        this.aclsMemberUpdateCommandOptions = aclCommandOptions.getAclsMemberUpdateCommandOptions();
+        this.aclsUpdateCommandOptions = aclCommandOptions.getAclsUpdateCommandOptions();
     }
 
     class BasePanelsCommand {

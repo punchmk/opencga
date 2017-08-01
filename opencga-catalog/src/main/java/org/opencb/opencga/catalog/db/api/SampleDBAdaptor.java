@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,6 @@ import org.opencb.commons.datastore.core.QueryResult;
 import org.opencb.opencga.catalog.exceptions.CatalogDBException;
 import org.opencb.opencga.catalog.models.AnnotationSet;
 import org.opencb.opencga.catalog.models.Sample;
-import org.opencb.opencga.catalog.models.acls.permissions.SampleAclEntry;
 
 import java.util.List;
 import java.util.Map;
@@ -34,14 +33,17 @@ import static org.opencb.commons.datastore.core.QueryParam.Type.*;
 /**
  * @author Jacobo Coll &lt;jacobo167@gmail.com&gt;
  */
-public interface SampleDBAdaptor extends AnnotationSetDBAdaptor<Sample, SampleAclEntry> {
+public interface SampleDBAdaptor extends AnnotationSetDBAdaptor<Sample> {
 
     enum QueryParams implements QueryParam {
         ID("id", INTEGER_ARRAY, ""),
         NAME("name", TEXT_ARRAY, ""),
         SOURCE("source", TEXT_ARRAY, ""),
+        INDIVIDUAL("individual", TEXT, ""),
         INDIVIDUAL_ID("individual.id", INTEGER_ARRAY, ""),
         DESCRIPTION("description", TEXT, ""),
+        TYPE("type", TEXT, ""),
+        SOMATIC("somatic", BOOLEAN, ""),
         ATTRIBUTES("attributes", TEXT, ""), // "Format: <key><operation><stringValue> where <operation> is [<|<=|>|>=|==|!=|~|!~]"
         NATTRIBUTES("nattributes", DECIMAL, ""), // "Format: <key><operation><numericalValue> where <operation> is [<|<=|>|>=|==|!=|~|!~]"
         BATTRIBUTES("battributes", BOOLEAN, ""), // "Format: <key><operation><true|false> where <operation> is [==|!=]"
@@ -49,13 +51,11 @@ public interface SampleDBAdaptor extends AnnotationSetDBAdaptor<Sample, SampleAc
         STATUS_NAME("status.name", TEXT, ""),
         STATUS_MSG("status.msg", TEXT, ""),
         STATUS_DATE("status.date", TEXT, ""),
+        RELEASE("release", INTEGER, ""),
+        CREATION_DATE("creationDate", TEXT, ""),
 
         STUDY_ID("studyId", INTEGER_ARRAY, ""),
         STUDY("study", INTEGER_ARRAY, ""), // Alias to studyId in the database. Only for the webservices.
-
-        ACL("acl", TEXT_ARRAY, ""),
-        ACL_MEMBER("acl.member", TEXT_ARRAY, ""),
-        ACL_PERMISSIONS("acl.permissions", TEXT_ARRAY, ""),
 
         ONTOLOGIES("ontologies", TEXT_ARRAY, ""), // Alias in the webservice to ONTOLOGY_TERMS
         ONTOLOGY_TERMS("ontologyTerms", TEXT_ARRAY, ""),
@@ -70,11 +70,6 @@ public interface SampleDBAdaptor extends AnnotationSetDBAdaptor<Sample, SampleAc
         ANNOTATION_SET_NAME("annotationSetName", TEXT_ARRAY, ""),
         ANNOTATION("annotation", TEXT_ARRAY, "");
 
-        /*
-        ANNOTATIONS_SET_VARIABLE_SET_ID("annotationSets.variableSetId", DOUBLE, ""),
-        ANNOTATION_SET_NAME("annotationSets.id", TEXT, ""),
-        ANNOTATION_SET("annotationSets", TEXT_ARRAY, "");
-*/
         private static Map<String, QueryParams> map;
         static {
             map = new LinkedMap();
@@ -154,14 +149,5 @@ public interface SampleDBAdaptor extends AnnotationSetDBAdaptor<Sample, SampleAc
 
     @Deprecated
     QueryResult<AnnotationSet> deleteAnnotation(long sampleId, String annotationId) throws CatalogDBException;
-
-    /**
-     * Remove all the Acls defined for the member in the resource.
-     *
-     * @param studyId study id where the Acls will be removed from.
-     * @param member member from whom the Acls will be removed.
-     * @throws CatalogDBException if any problem occurs during the removal.
-     */
-    void removeAclsFromStudy(long studyId, String member) throws CatalogDBException;
 
 }

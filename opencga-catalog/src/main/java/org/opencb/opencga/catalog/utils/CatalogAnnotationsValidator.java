@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -77,7 +77,8 @@ public class CatalogAnnotationsValidator {
                 break;
             case CATEGORICAL:
                 break;
-            case NUMERIC: {
+            case INTEGER:
+            case DOUBLE: {
                 //Check accepted values
                 if (!variable.getAllowedValues().isEmpty()) {
                     for (String range : variable.getAllowedValues()) {
@@ -173,7 +174,7 @@ public class CatalogAnnotationsValidator {
                 Annotation defaultAnnotation = getDefaultAnnotation(variable);
                 if (defaultAnnotation == null) {
                     if (variable.isRequired()) {
-                        throw new CatalogException("Variable " + variable + " is required.");
+                        throw new CatalogException("Missing required variable " + variable.getName());
                     }
                 } else {
                     defaultAnnotations.add(defaultAnnotation);
@@ -210,8 +211,12 @@ public class CatalogAnnotationsValidator {
                 Boolean booleanValue = getBooleanValue(defaultValue);
                 return booleanValue == null ? null : new Annotation(variable.getName(), booleanValue);
             }
-            case NUMERIC: {
+            case DOUBLE: {
                 Double numericValue = getNumericValue(defaultValue);
+                return numericValue == null ? null : new Annotation(variable.getName(), numericValue);
+            }
+            case INTEGER: {
+                Integer numericValue = getIntegerValue(defaultValue);
                 return numericValue == null ? null : new Annotation(variable.getName(), numericValue);
             }
             case CATEGORICAL:
@@ -258,7 +263,30 @@ public class CatalogAnnotationsValidator {
                 }
                 break;
             }
-            case NUMERIC:
+            case INTEGER:
+                for (Object object : listValues) {
+                    int numericValue = (int) object;
+
+                    if (variable.getAllowedValues() != null && !variable.getAllowedValues().isEmpty()) {
+                        boolean valid = false;
+                        for (String range : variable.getAllowedValues()) {
+                            String[] split = range.split(":", -1);
+                            int min = split[0].isEmpty() ? Integer.MIN_VALUE : Integer.valueOf(split[0]);
+                            int max = split[1].isEmpty() ? Integer.MAX_VALUE : Integer.valueOf(split[1]);
+                            if (numericValue >= min && numericValue <= max) {
+                                valid = true;
+                                break;
+                            }
+                        }
+                        if (!valid) {
+                            throw new CatalogException(message + " value '" + value + "' is not an allowed value for " + variable + ". It"
+                                    + " is in any range.");
+                        }
+                    }
+                    //If there is no "allowedValues", accept any number
+                }
+                break;
+            case DOUBLE:
                 for (Object object : listValues) {
                     Double numericValue = (Double) object;
 
@@ -298,8 +326,8 @@ public class CatalogAnnotationsValidator {
 //                            checkAnnotation(variableMap, new Annotation(entry.getKey().toString(), entry.getValue()));
                             annotationSet.add(new Annotation(entry.getKey().toString(), entry.getValue()));
                         }
-                        checkAnnotationSet(new VariableSet(0, variable.getName(), false, variable.getDescription(),
-                                variable.getVariableSet(), null), new AnnotationSet("", 0, annotationSet, null, null), null);
+                        checkAnnotationSet(new VariableSet(0, variable.getName(), false, false, variable.getDescription(),
+                                variable.getVariableSet(), 1, null), new AnnotationSet("", 0, annotationSet, null, 1, null), null);
                     }
                 }
                 break;
@@ -325,8 +353,10 @@ public class CatalogAnnotationsValidator {
             case TEXT:
             case CATEGORICAL:
                 return getStringValue(value);
-            case NUMERIC:
+            case DOUBLE:
                 return getNumericValue(value);
+            case INTEGER:
+                return getIntegerValue(value);
             case OBJECT:
                 return getMapValue(value);
             default:
@@ -384,6 +414,34 @@ public class CatalogAnnotationsValidator {
         } catch (CatalogException e) {
             throw new CatalogException("Value " + value + " is not a valid Boolean", e);
         }
+    }
+
+    /**
+     * Try to cast to Integer. If not possible, return null;
+     *
+     * @param value
+     * @return
+     */
+    private static Integer getIntegerValue(Object value) throws CatalogException {
+        Integer numericValue = null;
+        if (value == null) {
+            return null;
+        } else if (value instanceof Number) {
+            return ((Number) value).intValue();
+        } else if (value instanceof String) {
+            if (((String) value).isEmpty()) {
+                numericValue = null;    //Empty string
+            } else {
+                try {
+                    numericValue = Integer.parseInt((String) value);
+                } catch (NumberFormatException e) {
+                    throw new CatalogException("Value " + value + " is not an integer number", e);
+                }
+            }
+        } else if (value instanceof Boolean) {
+            return (Boolean) value ? 1 : 0;
+        }
+        return numericValue;
     }
 
     /**

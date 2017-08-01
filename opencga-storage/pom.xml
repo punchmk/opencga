@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  ~ Copyright 2015-2016 OpenCB
+  ~ Copyright 2015-2017 OpenCB
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -22,13 +22,13 @@
     <parent>
         <groupId>org.opencb.opencga</groupId>
         <artifactId>opencga</artifactId>
-        <version>1.0.0-final</version>
+        <version>1.2.0</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
     <!-- Version must be set to a literal, variables cannot be used in nested modules -->
     <artifactId>opencga-storage</artifactId>
-    <version>1.0.0-final</version>
+    <version>1.2.0</version>
     <packaging>pom</packaging>
 
     <properties>
@@ -41,6 +41,7 @@
         <module>opencga-storage-mongodb</module>
         <module>opencga-storage-hadoop</module>
         <module>opencga-storage-server</module>
+        <module>opencga-storage-benchmark</module>
     </modules>
 
     <dependencyManagement>
@@ -55,6 +56,11 @@
                 <artifactId>opencga-storage-server</artifactId>
                 <version>${opencga.version}</version>
             </dependency>
+            <dependency>
+                <groupId>org.opencb.opencga</groupId>
+                <artifactId>opencga-storage-benchmark</artifactId>
+                <version>${opencga.version}</version>
+            </dependency>
 
             <dependency>
                 <groupId>com.google.protobuf</groupId>
@@ -65,6 +71,12 @@
                 <groupId>io.grpc</groupId>
                 <artifactId>grpc-all</artifactId>
                 <version>${google.grpc}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.solr</groupId>
+                <artifactId>solr-test-framework</artifactId>
+                <version>${solr.version}</version>
+                <scope>test</scope>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -136,6 +148,9 @@
                                 org/opencb/opencga/storage/datamanagers/**,
                                 org/opencb/opencga/storage/app/service/OptionParser.java
                             </excludes>
+                            <resourceExcludes>
+                                benchmark/jmeter/**
+                            </resourceExcludes>
                         </configuration>
                         <goals>
                             <goal>check</goal>

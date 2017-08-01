@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,8 +17,10 @@
 package org.opencb.opencga.client.rest;
 
 import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
+import org.apache.commons.lang3.StringUtils;
 import org.glassfish.jersey.client.ClientProperties;
 import org.glassfish.jersey.media.multipart.FormDataMultiPart;
 import org.glassfish.jersey.media.multipart.MultiPartFeature;
@@ -29,6 +31,7 @@ import org.opencb.commons.datastore.core.QueryResponse;
 import org.opencb.commons.datastore.core.QueryResult;
 import org.opencb.opencga.catalog.exceptions.CatalogException;
 import org.opencb.opencga.client.config.ClientConfiguration;
+import org.opencb.opencga.core.results.VariantQueryResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,6 +39,7 @@ import javax.ws.rs.client.Client;
 import javax.ws.rs.client.ClientBuilder;
 import javax.ws.rs.client.Entity;
 import javax.ws.rs.client.WebTarget;
+import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
 import java.io.File;
 import java.io.IOException;
@@ -78,6 +82,7 @@ public abstract class AbstractParentClient {
         this.logger = LoggerFactory.getLogger(this.getClass().toString());
         this.client = ClientBuilder.newClient();
         jsonObjectMapper = new ObjectMapper();
+        jsonObjectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
         if (configuration.getRest() != null) {
             if (configuration.getRest().getTimeout() > 0) {
@@ -90,6 +95,12 @@ public abstract class AbstractParentClient {
                 defaultLimit = configuration.getRest().getDefaultLimit();
             }
         }
+    }
+
+    protected <T> VariantQueryResult<T> executeVariantQuery(String category, String action, Map<String, Object> params, String method,
+                                                            Class<T> clazz) throws IOException {
+        QueryResponse<T> queryResponse = execute(category, null, action, params, method, clazz);
+        return (VariantQueryResult<T>) queryResponse.first();
     }
 
     protected <T> QueryResponse<T> execute(String category, String action, Map<String, Object> params, String method, Class<T> clazz)
@@ -112,14 +123,6 @@ public abstract class AbstractParentClient {
             params = new ObjectMap(paramsMap);
         }
 
-//        // Remove null or empty params
-//        for (Map.Entry<String, Object> param : params.entrySet()) {
-//            Object value = param.getValue();
-//            if (value == null || (value instanceof String && ((String) value).isEmpty())) {
-//                params.remove(param.getKey());
-//            }
-//        }
-
         client.property(ClientProperties.CONNECT_TIMEOUT, 1000);
         client.property(ClientProperties.READ_TIMEOUT, timeout);
 
@@ -133,15 +136,15 @@ public abstract class AbstractParentClient {
 
         // TODO we still have to check if there are multiple IDs, the limit is 200 pero query, this can be parallelized
         // Some WS do not have IDs such as 'create'
-        if (id1 != null && !id1.isEmpty()) {
+        if (StringUtils.isNotEmpty(id1)) {
             path = path.path(id1);
         }
 
-        if (category2 != null && !category2.isEmpty()) {
+        if (StringUtils.isNotEmpty(category2)) {
             path = path.path(category2);
         }
 
-        if (id2 != null && !id2.isEmpty()) {
+        if (StringUtils.isNotEmpty(id2)) {
             path = path.path(id2);
         }
 
@@ -152,11 +155,6 @@ public abstract class AbstractParentClient {
         int limit = Math.min(numRequiredFeatures, batchSize);
 
         int skip = params.getInt(QueryOptions.SKIP, DEFAULT_SKIP);
-
-        // Session ID is needed almost always, the only exceptions are 'create/user', 'login' and 'changePassword'
-        if (this.sessionId != null && !this.sessionId.isEmpty()) {
-            path = path.queryParam("sid", this.sessionId);
-        }
 
         QueryResponse<T> finalQueryResponse = null;
         QueryResponse<T> queryResponse;
@@ -227,7 +225,9 @@ public abstract class AbstractParentClient {
             }
 
             logger.debug("GET URL: " + path.getUri().toURL());
-            jsonString = path.request().get().readEntity(String.class);
+            jsonString = path.request()
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + this.sessionId)
+                    .get().readEntity(String.class);
         } else if (method.equalsIgnoreCase(POST)) {
             // TODO we still have to check the limit of the query, and keep querying while there are more results
 //            Form form = new Form();
@@ -253,7 +253,9 @@ public abstract class AbstractParentClient {
 //            ObjectMap json = new ObjectMap("body", params.get("body"));
 
             logger.debug("POST URL: " + path.getUri().toURL());
-            Response body = path.request().post(Entity.json(params.get("body")));
+            Response body = path.request()
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + this.sessionId)
+                    .post(Entity.json(params.get("body")));
             jsonString = body.readEntity(String.class);
 //            jsonString = path.request().post(Entity.json(params.get("body")), String.class);
         }
@@ -286,7 +288,9 @@ public abstract class AbstractParentClient {
         }
         final FormDataMultiPart multipart = (FormDataMultiPart) formDataMultiPart.bodyPart(filePart);
 
-        jsonString = path.request().post(Entity.entity(multipart, multipart.getMediaType()), String.class);
+        jsonString = path.request()
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + this.sessionId)
+                .post(Entity.entity(multipart, multipart.getMediaType()), String.class);
 
         formDataMultiPart.close();
         multipart.close();

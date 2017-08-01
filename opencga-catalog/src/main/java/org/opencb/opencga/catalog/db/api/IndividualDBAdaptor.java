@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,9 +24,7 @@ import org.opencb.commons.datastore.core.QueryResult;
 import org.opencb.opencga.catalog.exceptions.CatalogDBException;
 import org.opencb.opencga.catalog.models.AnnotationSet;
 import org.opencb.opencga.catalog.models.Individual;
-import org.opencb.opencga.catalog.models.acls.permissions.IndividualAclEntry;
 
-import java.util.Arrays;
 import java.util.Map;
 
 import static org.opencb.commons.datastore.core.QueryParam.Type.*;
@@ -34,7 +32,7 @@ import static org.opencb.commons.datastore.core.QueryParam.Type.*;
 /**
  * Created by hpccoll1 on 19/06/15.
  */
-public interface IndividualDBAdaptor extends AnnotationSetDBAdaptor<Individual, IndividualAclEntry> {
+public interface IndividualDBAdaptor extends AnnotationSetDBAdaptor<Individual> {
 
     default boolean exists(long sampleId) throws CatalogDBException {
         return count(new Query(QueryParams.ID.key(), sampleId)).first() > 0;
@@ -67,10 +65,6 @@ public interface IndividualDBAdaptor extends AnnotationSetDBAdaptor<Individual, 
 
     QueryResult<AnnotationSet> deleteAnnotation(long individualId, String annotationId) throws CatalogDBException;
 
-    default QueryResult<IndividualAclEntry> getAcl(long individualId, String member) throws CatalogDBException {
-        return getAcl(individualId, Arrays.asList(member));
-    }
-
     long getStudyId(long individualId) throws CatalogDBException;
 
     enum QueryParams implements QueryParam {
@@ -84,13 +78,12 @@ public interface IndividualDBAdaptor extends AnnotationSetDBAdaptor<Individual, 
         STATUS_NAME("status.name", TEXT, ""),
         STATUS_MSG("status.msg", TEXT, ""),
         STATUS_DATE("status.date", TEXT, ""),
-        SPECIES("species", TEXT, ""),
-        SPECIES_TAXONOMY_CODE("species.taxonomyCode", TEXT, ""),
-        SPECIES_SCIENTIFIC_NAME("species.scientificName", TEXT, ""),
-        SPECIES_COMMON_NAME("species.commonName", TEXT, ""),
         POPULATION_NAME("population.name", TEXT, ""),
         POPULATION_SUBPOPULATION("population.subpopulation", TEXT, ""),
         POPULATION_DESCRIPTION("population.description", TEXT, ""),
+        DATE_OF_BIRTH("dateOfBirth", TEXT, ""),
+        CREATION_DATE("creationDate", TEXT, ""),
+        RELEASE("release", INTEGER, ""),
 
         ONTOLOGIES("ontologies", TEXT_ARRAY, ""), // Alias in the webservice to ONTOLOGY_TERMS
         ONTOLOGY_TERMS("ontologyTerms", TEXT_ARRAY, ""),
@@ -103,9 +96,6 @@ public interface IndividualDBAdaptor extends AnnotationSetDBAdaptor<Individual, 
         KARYOTYPIC_SEX("karyotypicSex", TEXT, ""),
         LIFE_STATUS("lifeStatus", TEXT, ""),
         AFFECTATION_STATUS("affectationStatus", TEXT, ""),
-        ACL("acl", TEXT_ARRAY, ""),
-        ACL_MEMBER("acl.member", TEXT_ARRAY, ""),
-        ACL_PERMISSIONS("acl.permissions", TEXT_ARRAY, ""),
         ATTRIBUTES("attributes", TEXT, ""), // "Format: <key><operation><stringValue> where <operation> is [<|<=|>|>=|==|!=|~|!~]"
         NATTRIBUTES("nattributes", DECIMAL, ""), // "Format: <key><operation><numericalValue> where <operation> is [<|<=|>|>=|==|!=|~|!~]"
         BATTRIBUTES("battributes", BOOLEAN, ""), // "Format: <key><operation><true|false> where <operation> is [==|!=]"
@@ -158,14 +148,5 @@ public interface IndividualDBAdaptor extends AnnotationSetDBAdaptor<Individual, 
             return map.get(key);
         }
     }
-
-    /**
-     * Remove all the Acls defined for the member in the resource.
-     *
-     * @param studyId study id where the Acls will be removed from.
-     * @param member member from whom the Acls will be removed.
-     * @throws CatalogDBException if any problem occurs during the removal.
-     */
-    void removeAclsFromStudy(long studyId, String member) throws CatalogDBException;
 
 }

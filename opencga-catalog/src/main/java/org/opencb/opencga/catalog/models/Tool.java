@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,7 +37,6 @@ public class Tool extends AbstractAcl<ToolAclEntry> {
 //    private List<ToolAclEntry> acl;
 
     public Tool() {
-        this("", "", "", null, null, "");
     }
 
     public Tool(String alias, String name, String description, Object manifest, Object result, String path) {

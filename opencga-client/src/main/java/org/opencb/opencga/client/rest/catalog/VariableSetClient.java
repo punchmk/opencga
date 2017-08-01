@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ import java.io.IOException;
  */
 public class VariableSetClient extends CatalogClient<VariableSet, VariableSet> {
 
-    private static final String VARIABLES_URL = "variableSet";
+    private static final String VARIABLES_URL = "variableset";
 
     public VariableSetClient(String sessionId, ClientConfiguration configuration, String userId) {
         super(userId, sessionId, configuration);

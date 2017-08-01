@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -63,7 +63,7 @@ public abstract class VariantStatisticsManagerAggregatedTest extends VariantStor
         runDefaultETL(inputUri, getVariantStorageEngine(), studyConfiguration,
                 new ObjectMap(VariantStorageEngine.Options.ANNOTATE.key(), false)
                         .append(VariantStorageEngine.Options.CALCULATE_STATS.key(), false));
-        dbAdaptor = getVariantStorageEngine().getDBAdaptor(DB_NAME);
+        dbAdaptor = getVariantStorageEngine().getDBAdaptor();
     }
 
     protected URI getInputUri() throws IOException {

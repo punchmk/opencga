@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.opencb.opencga.storage.mongodb.variant.adaptors;
 
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.opencb.biodata.models.variant.StudyEntry;
@@ -23,10 +24,11 @@ import org.opencb.biodata.models.variant.Variant;
 import org.opencb.commons.datastore.core.Query;
 import org.opencb.commons.datastore.core.QueryOptions;
 import org.opencb.commons.datastore.core.QueryResult;
-import org.opencb.opencga.storage.core.variant.adaptors.VariantDBAdaptor;
 import org.opencb.opencga.storage.core.variant.adaptors.VariantDBAdaptorTest;
+import org.opencb.opencga.storage.core.variant.adaptors.VariantQueryParam;
 import org.opencb.opencga.storage.mongodb.variant.MongoDBVariantStorageTest;
 
+import java.io.IOException;
 import java.util.Map;
 
 import static org.junit.Assert.*;
@@ -40,13 +42,24 @@ public class VariantMongoDBAdaptorTest extends VariantDBAdaptorTest implements M
 
     @Before
     public void setUpLoggers() throws Exception {
-        logLevelDebug();
+        logLevel("debug");
+    }
+
+    @After
+    public void resetLoggers() throws Exception {
+        logLevel("info");
+    }
+
+    @Override
+    public void after() throws IOException {
+        super.after();
+        closeConnections();
     }
 
     @Test
-    public void deleteStudyTest() throws Exception {
+    public void removeStudyTest() throws Exception {
         fileIndexed = false;
-        dbAdaptor.deleteStudy(studyConfiguration.getStudyName(), new QueryOptions("purge", false));
+        ((VariantMongoDBAdaptor) dbAdaptor).removeStudy(studyConfiguration.getStudyName(), new QueryOptions("purge", false));
         for (Variant variant : dbAdaptor) {
             for (Map.Entry<String, StudyEntry> entry : variant.getStudiesMap().entrySet()) {
                 assertFalse(entry.getValue().getStudyId().equals(studyConfiguration.getStudyId() + ""));
@@ -57,9 +70,9 @@ public class VariantMongoDBAdaptorTest extends VariantDBAdaptorTest implements M
     }
 
     @Test
-    public void deleteAndPurgeStudyTest() throws Exception {
+    public void removeAndPurgeStudyTest() throws Exception {
         fileIndexed = false;
-        dbAdaptor.deleteStudy(studyConfiguration.getStudyName(), new QueryOptions("purge", true));
+        ((VariantMongoDBAdaptor) dbAdaptor).removeStudy(studyConfiguration.getStudyName(), new QueryOptions("purge", true));
         for (Variant variant : dbAdaptor) {
             for (Map.Entry<String, StudyEntry> entry : variant.getStudiesMap().entrySet()) {
                 assertFalse(entry.getValue().getStudyId().equals(studyConfiguration.getStudyId() + ""));
@@ -70,10 +83,10 @@ public class VariantMongoDBAdaptorTest extends VariantDBAdaptorTest implements M
     }
 
     @Test
-    public void deleteStatsTest() throws Exception {
+    public void removeStatsTest() throws Exception {
         fileIndexed = false;
         String deletedCohort = "cohort2";
-        dbAdaptor.deleteStats(studyConfiguration.getStudyName(), deletedCohort, new QueryOptions());
+        ((VariantMongoDBAdaptor) dbAdaptor).removeStats(studyConfiguration.getStudyName(), deletedCohort, new QueryOptions());
 
         for (Variant variant : dbAdaptor) {
             for (Map.Entry<String, StudyEntry> entry : variant.getStudiesMap().entrySet()) {
@@ -86,21 +99,21 @@ public class VariantMongoDBAdaptorTest extends VariantDBAdaptorTest implements M
     }
 
     @Test
-    public void deleteAnnotationTest() throws Exception {
+    public void removeAnnotationTest() throws Exception {
         fileIndexed = false;
-        Query query = new Query(VariantDBAdaptor.VariantQueryParams.ANNOTATION_EXISTS.key(), true);
-        query.put(VariantDBAdaptor.VariantQueryParams.STUDIES.key(), studyConfiguration.getStudyId());
+        Query query = new Query(VariantQueryParam.ANNOTATION_EXISTS.key(), true);
+        query.put(VariantQueryParam.STUDIES.key(), studyConfiguration.getStudyId());
         long numAnnotatedVariants = dbAdaptor.count(query).first();
 
         assertEquals("All variants should be annotated", NUM_VARIANTS, numAnnotatedVariants);
 
-        query = new Query(VariantDBAdaptor.VariantQueryParams.CHROMOSOME.key(), "1");
-        query.put(VariantDBAdaptor.VariantQueryParams.STUDIES.key(), studyConfiguration.getStudyId());
+        query = new Query(VariantQueryParam.CHROMOSOME.key(), "1");
+        query.put(VariantQueryParam.STUDIES.key(), studyConfiguration.getStudyId());
         long numVariantsChr1 = dbAdaptor.count(query).first();
-        dbAdaptor.deleteAnnotation("", new Query(VariantDBAdaptor.VariantQueryParams.CHROMOSOME.key(), "1"), new QueryOptions());
+        ((VariantMongoDBAdaptor) dbAdaptor).removeAnnotation("", new Query(VariantQueryParam.CHROMOSOME.key(), "1"), new QueryOptions());
 
-        query = new Query(VariantDBAdaptor.VariantQueryParams.ANNOTATION_EXISTS.key(), false);
-        query.put(VariantDBAdaptor.VariantQueryParams.STUDIES.key(), studyConfiguration.getStudyId());
+        query = new Query(VariantQueryParam.ANNOTATION_EXISTS.key(), false);
+        query.put(VariantQueryParam.STUDIES.key(), studyConfiguration.getStudyId());
         long numVariantsNoAnnotation = dbAdaptor.count(query).first();
 
         assertNotEquals(numVariantsChr1, NUM_VARIANTS);

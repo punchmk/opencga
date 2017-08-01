@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -132,14 +132,11 @@ public class UserCommandExecutor extends OpencgaCommandExecutor {
             }
         } else {
             String sessionId = usersCommandOptions.commonCommandOptions.sessionId;
+            String errorMsg = "Missing password. ";
             if (StringUtils.isNotEmpty(sessionId)) {
-                openCGAClient.setSessionId(sessionId);
-                System.out.println("You have been logged correctly. This is your new session id " + sessionId);
-            } else {
-                // load user session file
-
-//                openCGAClient.setSessionId(sessionId);
+                errorMsg += "Active session id detected " + sessionId;
             }
+            System.err.println(errorMsg);
         }
     }
 
@@ -166,7 +163,12 @@ public class UserCommandExecutor extends OpencgaCommandExecutor {
         logger.debug("User info");
 
         QueryOptions queryOptions = new QueryOptions();
-        queryOptions.putIfNotEmpty("userId", cliSession.getUserId());
+        if (StringUtils.isNotEmpty(usersCommandOptions.infoCommandOptions.userParam.user)) {
+            queryOptions.putIfNotEmpty("userId", usersCommandOptions.infoCommandOptions.userParam.user);
+        } else if (StringUtils.isNotEmpty(cliSession.getUserId())) {
+            queryOptions.putIfNotEmpty("userId", cliSession.getUserId());
+        }
+
         queryOptions.putIfNotEmpty(UserDBAdaptor.QueryParams.LAST_MODIFIED.key(), usersCommandOptions.infoCommandOptions.lastModified);
         queryOptions.putIfNotEmpty(QueryOptions.INCLUDE, usersCommandOptions.infoCommandOptions.dataModelOptions.include);
         queryOptions.putIfNotEmpty(QueryOptions.EXCLUDE, usersCommandOptions.infoCommandOptions.dataModelOptions.exclude);
@@ -196,12 +198,11 @@ public class UserCommandExecutor extends OpencgaCommandExecutor {
         queryOptions.put(QueryOptions.LIMIT, usersCommandOptions.projectsCommandOptions.numericOptions.limit);
         queryOptions.put(QueryOptions.SKIP, usersCommandOptions.projectsCommandOptions.numericOptions.skip);
 
-        if (StringUtils.isNotEmpty(usersCommandOptions.projectsCommandOptions.user)) {
-            queryOptions.putIfNotEmpty("userId", usersCommandOptions.projectsCommandOptions.user);
+        if (StringUtils.isNotEmpty(usersCommandOptions.projectsCommandOptions.userParam.user)) {
+            queryOptions.putIfNotEmpty("userId", usersCommandOptions.projectsCommandOptions.userParam.user);
         } else {
             queryOptions.putIfNotEmpty("userId", cliSession.getUserId());
         }
-        queryOptions.put("shared", usersCommandOptions.projectsCommandOptions.shared);
 
         return openCGAClient.getUserClient().getProjects(queryOptions);
     }

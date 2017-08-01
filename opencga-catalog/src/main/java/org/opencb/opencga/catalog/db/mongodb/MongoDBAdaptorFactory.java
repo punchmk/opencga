@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,19 +16,23 @@
 
 package org.opencb.opencga.catalog.db.mongodb;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mongodb.BasicDBObject;
 import com.mongodb.DuplicateKeyException;
 import org.apache.commons.lang3.StringUtils;
 import org.bson.Document;
 import org.opencb.commons.datastore.core.DataStoreServerAddress;
+import org.opencb.commons.datastore.core.ObjectMap;
 import org.opencb.commons.datastore.core.QueryResult;
 import org.opencb.commons.datastore.mongodb.MongoDBCollection;
 import org.opencb.commons.datastore.mongodb.MongoDBConfiguration;
 import org.opencb.commons.datastore.mongodb.MongoDataStore;
 import org.opencb.commons.datastore.mongodb.MongoDataStoreManager;
-import org.opencb.opencga.catalog.config.Admin;
-import org.opencb.opencga.catalog.config.Configuration;
+import org.opencb.opencga.core.config.Admin;
+import org.opencb.opencga.core.config.Configuration;
 import org.opencb.opencga.catalog.db.DBAdaptorFactory;
+import org.opencb.opencga.catalog.db.api.ClinicalAnalysisDBAdaptor;
 import org.opencb.opencga.catalog.db.api.PanelDBAdaptor;
 import org.opencb.opencga.catalog.exceptions.CatalogDBException;
 import org.opencb.opencga.catalog.exceptions.CatalogException;
@@ -58,21 +62,25 @@ public class MongoDBAdaptorFactory implements DBAdaptorFactory {
             "cohort",
             "dataset",
             "panel",
+            "family",
+            "clinical",
             "metadata",
             "audit"
     );
 
-    protected static final String USER_COLLECTION = "user";
-    protected static final String STUDY_COLLECTION = "study";
-    protected static final String FILE_COLLECTION = "file";
-    protected static final String JOB_COLLECTION = "job";
-    protected static final String SAMPLE_COLLECTION = "sample";
-    protected static final String INDIVIDUAL_COLLECTION = "individual";
-    protected static final String COHORT_COLLECTION = "cohort";
-    protected static final String DATASET_COLLECTION = "dataset";
-    protected static final String PANEL_COLLECTION = "panel";
-    protected static final String METADATA_COLLECTION = "metadata";
-    protected static final String AUDIT_COLLECTION = "audit";
+    public static final String USER_COLLECTION = "user";
+    public static final String STUDY_COLLECTION = "study";
+    public static final String FILE_COLLECTION = "file";
+    public static final String JOB_COLLECTION = "job";
+    public static final String SAMPLE_COLLECTION = "sample";
+    public static final String INDIVIDUAL_COLLECTION = "individual";
+    public static final String COHORT_COLLECTION = "cohort";
+    public static final String FAMILY_COLLECTION = "family";
+    public static final String DATASET_COLLECTION = "dataset";
+    public static final String PANEL_COLLECTION = "panel";
+    public static final String CLINICAL_ANALYSIS_COLLECTION = "clinical";
+    public static final String METADATA_COLLECTION = "metadata";
+    public static final String AUDIT_COLLECTION = "audit";
     static final String METADATA_OBJECT_ID = "METADATA";
     private final MongoDataStoreManager mongoManager;
     private final MongoDBConfiguration configuration;
@@ -88,8 +96,10 @@ public class MongoDBAdaptorFactory implements DBAdaptorFactory {
     private MongoDBCollection individualCollection;
     private MongoDBCollection jobCollection;
     private MongoDBCollection cohortCollection;
+    private MongoDBCollection familyCollection;
     private MongoDBCollection datasetCollection;
     private MongoDBCollection panelCollection;
+    private MongoDBCollection clinicalCollection;
     private MongoDBCollection auditCollection;
     private Map<String, MongoDBCollection> collections;
     private UserMongoDBAdaptor userDBAdaptor;
@@ -100,8 +110,10 @@ public class MongoDBAdaptorFactory implements DBAdaptorFactory {
     private JobMongoDBAdaptor jobDBAdaptor;
     private ProjectMongoDBAdaptor projectDBAdaptor;
     private CohortMongoDBAdaptor cohortDBAdaptor;
+    private FamilyMongoDBAdaptor familyDBAdaptor;
     private DatasetMongoDBAdaptor datasetDBAdaptor;
     private PanelMongoDBAdaptor panelDBAdaptor;
+    private ClinicalAnalysisDBAdaptor clinicalDBAdaptor;
     private AuditMongoDBAdaptor auditDBAdaptor;
     private MetaMongoDBAdaptor metaDBAdaptor;
 
@@ -142,11 +154,6 @@ public class MongoDBAdaptorFactory implements DBAdaptorFactory {
             } catch (DuplicateKeyException e) {
                 logger.warn("Trying to replace MetadataObject. DuplicateKey");
             }
-            //Set indexes
-//            BasicDBObject unique = new BasicDBObject("unique", true);
-//            nativeUserCollection.createIndexes(new BasicDBObject("id", 1), unique);
-//            nativeFileCollection.createIndexes(BasicDBObjectBuilder.start("studyId", 1).append("path", 1).get(), unique);
-//            nativeJobCollection.createIndexes(new BasicDBObject("id", 1), unique);
         } else {
             throw new CatalogDBException("Catalog already initialized");
         }
@@ -171,25 +178,18 @@ public class MongoDBAdaptorFactory implements DBAdaptorFactory {
     @Override
     public void createIndexes() throws CatalogDBException {
         metaDBAdaptor.createIndexes();
-//        InputStream resourceAsStream = getClass().getResourceAsStream("/catalog-indexes.txt");
-//        ObjectMapper objectMapper = new ObjectMapper();
-//        BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(resourceAsStream));
-//        bufferedReader.lines().filter(s -> !s.trim().isEmpty()).forEach(s -> {
-//            try {
-//                System.out.println(s);
-//                HashMap hashMap = objectMapper.readValue(s, HashMap.class);
-//                System.out.println(hashMap);
-//                QueryResult<Document> index = getCatalogUserDBAdaptor().getUserCollection().getIndex();
-//                System.out.println(index);
-//            } catch (IOException e) {
-//                e.printStackTrace();
-//            }
-//        });
-//        try {
-//            bufferedReader.close();
-//        } catch (IOException e) {
-//            e.printStackTrace();
-//        }
+    }
+
+    @Override
+    public ObjectMap getDatabaseStatus() {
+        Document dbStatus = mongoManager.get(database, this.configuration).getServerStatus();
+        try {
+            ObjectMap map = new ObjectMap(new ObjectMapper().writeValueAsString(dbStatus));
+            return new ObjectMap("ok", map.getInt("ok", 0) > 0);
+        } catch (JsonProcessingException e) {
+            logger.error(e.getMessage(), e);
+            return new ObjectMap();
+        }
     }
 
     @Override
@@ -264,6 +264,21 @@ public class MongoDBAdaptorFactory implements DBAdaptorFactory {
     }
 
     @Override
+    public FamilyMongoDBAdaptor getCatalogFamilyDBAdaptor() {
+        return familyDBAdaptor;
+    }
+
+    @Override
+    public ClinicalAnalysisDBAdaptor getClinicalAnalysisDBAdaptor() {
+        return clinicalDBAdaptor;
+    }
+
+    @Override
+    public Map<String, MongoDBCollection> getMongoDBCollectionMap() {
+        return collections;
+    }
+
+    @Override
     public AuditMongoDBAdaptor getCatalogAuditDbAdaptor() {
         return auditDBAdaptor;
     }
@@ -285,6 +300,8 @@ public class MongoDBAdaptorFactory implements DBAdaptorFactory {
         datasetCollection = db.getCollection(DATASET_COLLECTION);
         auditCollection = db.getCollection(AUDIT_COLLECTION);
         panelCollection = db.getCollection(PANEL_COLLECTION);
+        familyCollection = db.getCollection(FAMILY_COLLECTION);
+        clinicalCollection = db.getCollection(CLINICAL_ANALYSIS_COLLECTION);
 
         collections = new HashMap<>();
         collections.put(METADATA_COLLECTION, metaCollection);
@@ -298,6 +315,8 @@ public class MongoDBAdaptorFactory implements DBAdaptorFactory {
         collections.put(DATASET_COLLECTION, datasetCollection);
         collections.put(AUDIT_COLLECTION, auditCollection);
         collections.put(PANEL_COLLECTION, panelCollection);
+        collections.put(FAMILY_COLLECTION, familyCollection);
+        collections.put(CLINICAL_ANALYSIS_COLLECTION, clinicalCollection);
 
         fileDBAdaptor = new FileMongoDBAdaptor(fileCollection, this);
         individualDBAdaptor = new IndividualMongoDBAdaptor(individualCollection, this);
@@ -309,6 +328,8 @@ public class MongoDBAdaptorFactory implements DBAdaptorFactory {
         cohortDBAdaptor = new CohortMongoDBAdaptor(cohortCollection, this);
         datasetDBAdaptor = new DatasetMongoDBAdaptor(datasetCollection, this);
         panelDBAdaptor = new PanelMongoDBAdaptor(panelCollection, this);
+        familyDBAdaptor = new FamilyMongoDBAdaptor(familyCollection, this);
+        clinicalDBAdaptor = new ClinicalAnalysisMongoDBAdaptor(clinicalCollection, this);
         metaDBAdaptor = new MetaMongoDBAdaptor(metaCollection, this);
         auditDBAdaptor = new AuditMongoDBAdaptor(auditCollection);
 

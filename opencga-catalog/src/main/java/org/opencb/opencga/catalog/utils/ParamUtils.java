@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -86,7 +86,7 @@ public class ParamUtils {
     }
 
     public static void checkAlias(String alias, String name, long offset) throws CatalogParameterException {
-        if (alias == null || alias.isEmpty() || !alias.matches("^[_A-Za-z0-9-\\+]+$")) {
+        if (alias == null || alias.isEmpty() || !alias.matches("^[_A-Za-z0-9-.\\+]+$")) {
             throw new CatalogParameterException("Error in alias: Invalid alias for '" + name + "'.");
         }
         if (StringUtils.isNumeric(alias) && Long.parseLong(alias) >= offset) {

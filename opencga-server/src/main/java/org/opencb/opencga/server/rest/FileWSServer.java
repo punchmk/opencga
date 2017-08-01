@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ package org.opencb.opencga.server.rest;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.annotations.*;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.time.StopWatch;
 import org.glassfish.jersey.media.multipart.FormDataContentDisposition;
 import org.glassfish.jersey.media.multipart.FormDataParam;
 import org.opencb.biodata.models.core.Region;
@@ -34,9 +33,11 @@ import org.opencb.opencga.catalog.managers.CatalogManager;
 import org.opencb.opencga.catalog.managers.FileManager;
 import org.opencb.opencga.catalog.managers.api.IFileManager;
 import org.opencb.opencga.catalog.models.DataStore;
-import org.opencb.opencga.catalog.models.File;
 import org.opencb.opencga.catalog.models.FileIndex;
 import org.opencb.opencga.catalog.models.FileTree;
+import org.opencb.opencga.catalog.models.File;
+import org.opencb.opencga.catalog.models.Sample;
+import org.opencb.opencga.catalog.models.acls.AclParams;
 import org.opencb.opencga.catalog.models.acls.permissions.FileAclEntry;
 import org.opencb.opencga.catalog.models.acls.permissions.StudyAclEntry;
 import org.opencb.opencga.catalog.utils.FileMetadataReader;
@@ -50,6 +51,7 @@ import org.opencb.opencga.storage.core.exceptions.StorageEngineException;
 import org.opencb.opencga.storage.core.manager.variant.VariantStorageManager;
 import org.opencb.opencga.storage.core.manager.variant.operations.StorageOperation;
 import org.opencb.opencga.storage.core.variant.adaptors.VariantDBAdaptor;
+import org.opencb.opencga.storage.core.variant.adaptors.VariantQueryParam;
 import org.opencb.opencga.storage.core.variant.annotation.VariantAnnotationManager;
 
 import javax.servlet.http.HttpServletRequest;
@@ -63,7 +65,7 @@ import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import static org.opencb.opencga.storage.core.variant.VariantStorageEngine.Options.*;
 
@@ -74,9 +76,9 @@ import static org.opencb.opencga.storage.core.variant.VariantStorageEngine.Optio
 public class FileWSServer extends OpenCGAWSServer {
 
     private IFileManager fileManager;
-    public FileWSServer(@Context UriInfo uriInfo, @Context HttpServletRequest httpServletRequest) throws IOException,
+    public FileWSServer(@Context UriInfo uriInfo, @Context HttpServletRequest httpServletRequest, @Context HttpHeaders httpHeaders) throws IOException,
             ClassNotFoundException, IllegalAccessException, InstantiationException, VersionException {
-        super(uriInfo, httpServletRequest);
+        super(uriInfo, httpServletRequest, httpHeaders);
         fileManager = catalogManager.getFileManager();
     }
 
@@ -116,55 +118,10 @@ public class FileWSServer extends OpenCGAWSServer {
             } else {
                 // Create a file
                 file = fileManager.create(studyStr, File.Type.FILE, File.Format.PLAIN, File.Bioformat.UNKNOWN, params.path, null,
-                        params.description, new File.FileStatus(File.FileStatus.READY), 0, -1, null, -1, null, null, params.parents,
-                        params.content, queryOptions, sessionId);
+                        params.description, new File.FileStatus(File.FileStatus.READY), 0, -1, null, -1, null, null,
+                        params.parents, params.content, queryOptions, sessionId);
             }
             return createOkResponse(file);
-        } catch (Exception e) {
-            return createErrorResponse(e);
-        }
-    }
-
-    @GET
-    @Path("/create-folder")
-    @ApiOperation(value = "Create a folder in the catalog environment [WARNING]", position = 2, response = File.class,
-            notes = "WARNING: the usage of this web service is discouraged, please use the POST /create version instead. Be aware that "
-                    + "this is web service is not tested and this can be deprecated in a future version.")
-    public Response createFolder(@ApiParam(value = "(DEPRECATED) Use study instead", hidden = true)
-                                 @QueryParam("studyId") String studyIdStr,
-                                 @ApiParam(value = "Study [[user@]project:]study where study and project can be either the id or alias")
-                                 @QueryParam("study") String studyStr,
-                                 @ApiParam(value = "CSV list of paths where the folders will be created", required = true)
-                                 @QueryParam("folders") String folders,
-                                 @ApiParam(value = "Paths where the folder will be created", required = true)
-                                 @QueryParam("path") String path,
-                                 @ApiParam(value = "Create the parent directories if they do not exist")
-                                 @QueryParam("parents") @DefaultValue("false") boolean parents) {
-        try {
-            if (StringUtils.isNotEmpty(studyIdStr)) {
-                studyStr = studyIdStr;
-            }
-            if (StringUtils.isNotEmpty(path)) {
-                folders = path;
-                query.put("folders", folders);
-            }
-
-            long studyId = catalogManager.getStudyId(studyStr, sessionId);
-            List<String> folderList = Arrays.asList(folders.replace(":", "/").split(","));
-
-            List<QueryResult> queryResultList = new ArrayList<>(folderList.size());
-            for (String folder : folderList) {
-                try {
-                    java.nio.file.Path folderPath = Paths.get(folder);
-                    QueryResult<File> newFolder = catalogManager.getFileManager().createFolder(Long.toString(studyId), folderPath.toString(),
-                            null, parents, null, queryOptions, sessionId);
-                    newFolder.setId("Create folder");
-                    queryResultList.add(newFolder);
-                } catch (CatalogException e) {
-                    queryResultList.add(new QueryResult<>("Create folder", -1, 0, 0, "", e.getMessage(), Collections.emptyList()));
-                }
-            }
-            return createOkResponse(queryResultList);
         } catch (Exception e) {
             return createErrorResponse(e);
         }
@@ -189,33 +146,11 @@ public class FileWSServer extends OpenCGAWSServer {
             AbstractManager.MyResourceIds resourceIds = fileManager.getIds(fileStr, studyStr, sessionId);
 
             for (Long fileId : resourceIds.getResourceIds()) {
-                queryResults.add(catalogManager.getFile(fileId, queryOptions, sessionId));
+                QueryResult<File> fileQueryResult = catalogManager.getFile(fileId, queryOptions, sessionId);
+                populateOldDeprecatedSampleIdsField(fileQueryResult);
+                queryResults.add(fileQueryResult);
             }
             return createOkResponse(queryResults);
-        } catch (Exception e) {
-            return createErrorResponse(e);
-        }
-    }
-
-    @Deprecated
-    @GET
-    @Path("/{fileId}/uri")
-    @ApiOperation(value = "File uri [DEPRECATED]", position = 3, notes = "Deprecated method. Use /info with include query options instead.",
-            hidden = true)
-    public Response getUri(@ApiParam(value = "fileId") @PathParam(value = "fileId") String fileStr,
-                           @ApiParam(value = "Study [[user@]project:]study where study and project can be either the id or alias")
-                           @QueryParam("study") String studyStr) {
-        try {
-            List<QueryResult> results = new LinkedList<>();
-            AbstractManager.MyResourceIds resourceIds = fileManager.getIds(fileStr, studyStr, sessionId);
-
-            for (long fileId : resourceIds.getResourceIds()) {
-                System.out.println("fileId = " + fileId);
-                QueryResult<File> result = catalogManager.getFile(fileId, queryOptions, sessionId);
-                URI fileUri = result.first().getUri();
-                results.add(new QueryResult<>(Long.toString(fileId), 0, 1, 1, "", "", Collections.singletonList(fileUri)));
-            }
-            return createOkResponse(results);
         } catch (Exception e) {
             return createErrorResponse(e);
         }
@@ -494,64 +429,13 @@ public class FileWSServer extends OpenCGAWSServer {
         try {
             DataInputStream stream;
             AbstractManager.MyResourceId resource = fileManager.getId(fileIdStr, studyStr, sessionId);
-            catalogManager.getAuthorizationManager().checkFilePermission(resource.getResourceId(), resource.getUser(),
-                    FileAclEntry.FilePermissions.DOWNLOAD);
+            catalogManager.getAuthorizationManager().checkFilePermission(resource.getStudyId(), resource.getResourceId(),
+                    resource.getUser(), FileAclEntry.FilePermissions.DOWNLOAD);
 
             QueryResult<File> queryResult = catalogManager.getFile(resource.getResourceId(), this.queryOptions, sessionId);
             File file = queryResult.getResult().get(0);
             stream = catalogManager.downloadFile(resource.getResourceId(), sessionId);
             return createOkResponse(stream, MediaType.APPLICATION_OCTET_STREAM_TYPE, file.getName());
-        } catch (Exception e) {
-            return createErrorResponse(e);
-        }
-    }
-
-    @GET
-    @Path("/ranges")
-    @ApiOperation(value = "Fetchs alignment files using HTTP Ranges protocol")
-    @Produces("text/plain")
-    public Response getRanges(@Context HttpHeaders headers,
-                              @ApiParam(value = "File id, name or path") @QueryParam("file") String fileIdStr,
-                              @ApiParam(value = "Study [[user@]project:]study where study and project can be either the id or alias")
-                              @QueryParam("study") String studyStr) {
-        try {
-            AbstractManager.MyResourceId resource = catalogManager.getFileManager().getId(fileIdStr, studyStr, sessionId);
-            catalogManager.getAuthorizationManager().checkFilePermission(resource.getResourceId(), resource.getUser(),
-                    FileAclEntry.FilePermissions.DOWNLOAD);
-            QueryResult<File> queryResult = catalogManager.getFile(resource.getResourceId(), this.queryOptions, sessionId);
-            File file = queryResult.getResult().get(0);
-
-            DataInputStream stream = catalogManager.downloadFile(resource.getResourceId(), sessionId);
-
-            List<String> rangeList = headers.getRequestHeader("range");
-            if (rangeList != null) {
-                int from;
-                int to;
-                String[] acceptedRanges = rangeList.get(0).split("=")[1].split("-");
-                from = Integer.parseInt(acceptedRanges[0]);
-                to = Integer.parseInt(acceptedRanges[1]);
-
-                byte[] buf = new byte[to - from + 1];
-                logger.debug("from: {} , to: {}, length:{}, available: {}", from, to, to - from + 1, stream.available());
-                StopWatch t = StopWatch.createStarted();
-                stream.skip(from);
-                stream.read(buf);
-                t.stop();
-                logger.debug("Skip {}B and read {}B in {}s", from, buf.length, t.getTime(TimeUnit.MILLISECONDS) / 1000.0);
-
-                return Response.ok(buf, MediaType.APPLICATION_OCTET_STREAM_TYPE)
-                        .header("Accept-Ranges", "bytes")
-                        .header("Access-Control-Allow-Origin", "*")
-                        .header("Access-Control-Allow-Headers", "x-requested-with, content-type, range")
-                        .header("Access-Control-Allow-Credentials", "true")
-                        .header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-                        .header("Content-Range", "bytes " + from + "-" + to + "/" + file.getSize())
-                        .header("Content-length", to - from + 1)
-                        .status(Response.Status.PARTIAL_CONTENT).build();
-
-            } else {
-                return createOkResponse(stream, MediaType.APPLICATION_OCTET_STREAM_TYPE, file.getName());
-            }
         } catch (Exception e) {
             return createErrorResponse(e);
         }
@@ -567,8 +451,8 @@ public class FileWSServer extends OpenCGAWSServer {
                             @ApiParam(value = "limit", required = false) @QueryParam("limit") @DefaultValue("-1") int limit) {
         try {
             AbstractManager.MyResourceId resource = fileManager.getId(fileIdStr, studyStr, sessionId);
-            catalogManager.getAuthorizationManager().checkFilePermission(resource.getResourceId(), resource.getUser(),
-                    FileAclEntry.FilePermissions.VIEW_CONTENT);
+            catalogManager.getAuthorizationManager().checkFilePermission(resource.getStudyId(), resource.getResourceId(),
+                    resource.getUser(), FileAclEntry.FilePermissions.VIEW_CONTENT);
 
             DataInputStream stream = catalogManager.downloadFile(resource.getResourceId(), start, limit, sessionId);
 //             String content = org.apache.commons.io.IOUtils.toString(stream);
@@ -591,8 +475,8 @@ public class FileWSServer extends OpenCGAWSServer {
             @ApiParam(value = "Return multiple matches", required = false)  @DefaultValue("true") @QueryParam("multi") Boolean multi) {
         try {
             AbstractManager.MyResourceId resource = fileManager.getId(fileIdStr, studyStr, sessionId);
-            catalogManager.getAuthorizationManager().checkFilePermission(resource.getResourceId(), resource.getUser(),
-                    FileAclEntry.FilePermissions.VIEW_CONTENT);
+            catalogManager.getAuthorizationManager().checkFilePermission(resource.getStudyId(), resource.getResourceId(),
+                    resource.getUser(), FileAclEntry.FilePermissions.VIEW_CONTENT);
 
             DataInputStream stream = catalogManager.grepFile(resource.getResourceId(), pattern, ignoreCase, multi, sessionId);
             return createOkResponse(stream, MediaType.TEXT_PLAIN_TYPE);
@@ -615,8 +499,8 @@ public class FileWSServer extends OpenCGAWSServer {
         InputStream streamBody = null;
         try {
             AbstractManager.MyResourceId resource = fileManager.getId(fileStr, studyStr, sessionId);
-            catalogManager.getAuthorizationManager().checkFilePermission(resource.getResourceId(), resource.getUser(),
-                    FileAclEntry.FilePermissions.WRITE);
+            catalogManager.getAuthorizationManager().checkFilePermission(resource.getStudyId(), resource.getResourceId(),
+                    resource.getUser(), FileAclEntry.FilePermissions.WRITE);
 
             /** Obtain file uri **/
             File file = catalogManager.getFile(resource.getResourceId(), sessionId).getResult().get(0);
@@ -677,20 +561,21 @@ public class FileWSServer extends OpenCGAWSServer {
 
     @GET
     @Path("/search")
-    @ApiOperation(value = "Multi-study search that allows the user to look for files from from different studies of the same project " +
-            "applying filters.", position = 12, response = File[].class)
+    @ApiOperation(value = "File search method.", position = 12, response = File[].class)
     @ApiImplicitParams({
             @ApiImplicitParam(name = "include", value = "Fields included in the response, whole JSON path must be provided", example = "name,attributes", dataType = "string", paramType = "query"),
             @ApiImplicitParam(name = "exclude", value = "Fields excluded in the response, whole JSON path must be provided", example = "id,status", dataType = "string", paramType = "query"),
             @ApiImplicitParam(name = "limit", value = "Number of results to be returned in the queries", dataType = "integer", paramType = "query"),
             @ApiImplicitParam(name = "skip", value = "Number of results to skip in the queries", dataType = "integer", paramType = "query"),
-            @ApiImplicitParam(name = "count", value = "Total number of results", dataType = "boolean", paramType = "query")
+            @ApiImplicitParam(name = "count", value = "Total number of results", dataType = "boolean", paramType = "query"),
+            @ApiImplicitParam(name = "lazy", value = "False to return entire job and experiment object", defaultValue = "true",
+                    dataType = "boolean", paramType = "query")
     })
     public Response search(@ApiParam(value = "Comma separated list of file ids", required = false) @DefaultValue("") @QueryParam("id") String id,
                            @ApiParam(value = "(DEPRECATED) Use study instead", hidden = true) @QueryParam("studyId")
                                    String studyIdStr,
-                           @ApiParam(value = "Study [[user@]project:]{study1,study2|*}  where studies and project can be either the id or"
-                                   + " alias.") @QueryParam("study") String studyStr,
+                           @ApiParam(value = "Study [[user@]project:]{study}  where study and project can be either the id or alias.")
+                               @QueryParam("study") String studyStr,
                            @ApiParam(value = "Comma separated list of file names") @DefaultValue("") @QueryParam("name") String name,
                            @ApiParam(value = "Comma separated list of paths", required = false) @DefaultValue("") @QueryParam("path") String path,
                            @ApiParam(value = "Available types (FILE, DIRECTORY)", required = false) @DefaultValue("") @QueryParam("type") String type,
@@ -698,18 +583,19 @@ public class FileWSServer extends OpenCGAWSServer {
                            @ApiParam(value = "Comma separated Format values. For existing Formats see files/help", required = false) @DefaultValue("") @QueryParam("format") String formats,
                            @ApiParam(value = "Status", required = false) @DefaultValue("") @QueryParam("status") String status,
                            @ApiParam(value = "Directory under which we want to look for files or folders", required = false) @DefaultValue("") @QueryParam("directory") String directory,
-                           @ApiParam(value = "Creation date (Format: yyyyMMddHHmmss)", required = false) @DefaultValue("") @QueryParam("creationDate") String creationDate,
+                           @ApiParam(value = "Creation date (Format: yyyyMMddHHmmss)") @QueryParam("creationDate") String creationDate,
                            @ApiParam(value = "Modification date (Format: yyyyMMddHHmmss)", required = false) @DefaultValue("") @QueryParam("modificationDate") String modificationDate,
                            @ApiParam(value = "Description", required = false) @DefaultValue("") @QueryParam("description") String description,
                            @ApiParam(value = "Size", required = false) @DefaultValue("") @QueryParam("size") Long size,
-                           @ApiParam(value = "DEPRECATED: use sample instead", hidden = true) @DefaultValue("") @QueryParam("sampleIds") String sampleIds,
-                           @ApiParam(value = "Comma separated list of sample ids", required = false) @DefaultValue("") @QueryParam("sample") String samples,
+                           @ApiParam(value = "Comma separated list of sample ids", hidden = true) @QueryParam("sample") String sample,
+                           @ApiParam(value = "Comma separated list of sample ids") @QueryParam("samples") String samples,
                            @ApiParam(value = "(DEPRECATED) Job id that created the file(s) or folder(s)", hidden = true) @QueryParam("jobId") String jobIdOld,
                            @ApiParam(value = "Job id that created the file(s) or folder(s)", required = false) @QueryParam("job.id") String jobId,
                            @ApiParam(value = "Text attributes (Format: sex=male,age>20 ...)", required = false) @DefaultValue("") @QueryParam("attributes") String attributes,
                            @ApiParam(value = "Numerical attributes (Format: sex=male,age>20 ...)", required = false) @DefaultValue("")
                            @QueryParam("nattributes") String nattributes,
-                           @ApiParam(value = "Skip count", defaultValue = "false") @QueryParam("skipCount") boolean skipCount) {
+                           @ApiParam(value = "Skip count", defaultValue = "false") @QueryParam("skipCount") boolean skipCount,
+                           @ApiParam(value = "Release value") @QueryParam("release") String release) {
         try {
             queryOptions.put(QueryOptions.SKIP_COUNT, skipCount);
 
@@ -717,8 +603,8 @@ public class FileWSServer extends OpenCGAWSServer {
                 studyStr = studyIdStr;
             }
 
-            if (StringUtils.isNotEmpty(samples)) {
-                query.put("sampleIds", samples);
+            if (StringUtils.isNotEmpty(sample) && !query.containsKey(FileDBAdaptor.QueryParams.SAMPLES.key())) {
+                query.put(FileDBAdaptor.QueryParams.SAMPLES.key(), sample);
             }
 
             if (query.containsKey(FileDBAdaptor.QueryParams.NAME.key())
@@ -732,7 +618,14 @@ public class FileWSServer extends OpenCGAWSServer {
                 query.put(FileDBAdaptor.QueryParams.JOB_ID.key(), query.get("jobId"));
                 query.remove("jobId");
             }
-            QueryResult<File> result = fileManager.search(studyStr, query, queryOptions, sessionId);
+
+            QueryResult<File> result;
+            if (count) {
+                result = fileManager.count(studyStr, query, sessionId);
+            } else {
+                result = fileManager.search(studyStr, query, queryOptions, sessionId);
+            }
+            populateOldDeprecatedSampleIdsField(result);
             return createOkResponse(result);
         } catch (Exception e) {
             return createErrorResponse(e);
@@ -754,7 +647,8 @@ public class FileWSServer extends OpenCGAWSServer {
                          @QueryParam("study") String studyStr) {
         try {
             AbstractManager.MyResourceId resource = fileManager.getId(folder, studyStr, sessionId);
-            QueryResult result = catalogManager.getAllFilesInFolder(resource.getResourceId(), queryOptions, sessionId);
+            QueryResult<File> result = catalogManager.getAllFilesInFolder(resource.getResourceId(), queryOptions, sessionId);
+            populateOldDeprecatedSampleIdsField(result);
             return createOkResponse(result);
         } catch (Exception e) {
             return createErrorResponse(e);
@@ -962,8 +856,8 @@ public class FileWSServer extends OpenCGAWSServer {
 
                     AlignmentDBAdaptor dbAdaptor;
                     try {
-                        AlignmentStorageEngine alignmentStorageManager = storageEngineFactory.getAlignmentStorageEngine(storageEngine);
-                        dbAdaptor = alignmentStorageManager.getDBAdaptor(dbName);
+                        AlignmentStorageEngine alignmentStorageManager = storageEngineFactory.getAlignmentStorageEngine(storageEngine, dbName);
+                        dbAdaptor = alignmentStorageManager.getDBAdaptor();
                     } catch (ClassNotFoundException | IllegalAccessException | InstantiationException | StorageEngineException e) {
                         return createErrorResponse(e);
                     }
@@ -984,7 +878,7 @@ public class FileWSServer extends OpenCGAWSServer {
                 case VARIANT: {
                     String warningMsg = null;
                     Query query = VariantStorageManager.getVariantQuery(queryOptions);
-                    query.put(VariantDBAdaptor.VariantQueryParams.REGION.key(), region);
+                    query.put(VariantQueryParam.REGION.key(), region);
 
 //                    for (Map.Entry<String, List<String>> entry : params.entrySet()) {
 //                        List<String> values = entry.getValue();
@@ -995,21 +889,21 @@ public class FileWSServer extends OpenCGAWSServer {
 //                        queryOptions.add(entry.getKey(), csv);
 //                    }
 //                    queryOptions.put("files", Arrays.asList(Integer.toString(fileIdNum)));
-                    query.put(VariantDBAdaptor.VariantQueryParams.FILES.key(), fileIdNum);
+                    query.put(VariantQueryParam.FILES.key(), fileIdNum);
 
                     if (params.containsKey("fileId")) {
-                        warningMsg = "Do not use param \"fileI\". Use \"" + VariantDBAdaptor.VariantQueryParams.RETURNED_FILES.key() + "\" instead";
+                        warningMsg = "Do not use param \"fileI\". Use \"" + VariantQueryParam.RETURNED_FILES.key() + "\" instead";
                         if (params.get("fileId").get(0).isEmpty()) {
-                            query.put(VariantDBAdaptor.VariantQueryParams.RETURNED_FILES.key(), fileId);
+                            query.put(VariantQueryParam.RETURNED_FILES.key(), fileId);
                         } else {
                             List<String> files = params.get("fileId");
-                            query.put(VariantDBAdaptor.VariantQueryParams.RETURNED_FILES.key(), files);
+                            query.put(VariantQueryParam.RETURNED_FILES.key(), files);
                         }
                     }
 
                     VariantDBAdaptor dbAdaptor;
                     try {
-                        dbAdaptor = storageEngineFactory.getVariantStorageEngine(storageEngine).getDBAdaptor(dbName);
+                        dbAdaptor = storageEngineFactory.getVariantStorageEngine(storageEngine, dbName).getDBAdaptor();
 //                        dbAdaptor = new CatalogVariantDBAdaptor(catalogManager, dbAdaptor);
                     } catch (ClassNotFoundException | IllegalAccessException | InstantiationException | StorageEngineException e) {
                         return createErrorResponse(e);
@@ -1077,12 +971,14 @@ public class FileWSServer extends OpenCGAWSServer {
                                 @ApiParam(value = "List of samples to be returned") @QueryParam("returnedSamples") String returnedSamples,
                                 @ApiParam(value = "List of files to be returned.") @QueryParam("returnedFiles") String returnedFiles,
                                 @ApiParam(value = "Variants in specific files") @QueryParam("files") String files,
+                                @ApiParam(value = VariantQueryParam.FILTER_DESCR) @QueryParam("filter") String filter,
                                 @ApiParam(value = "Minor Allele Frequency: [{study:}]{cohort}[<|>|<=|>=]{number}") @QueryParam("maf") String maf,
                                 @ApiParam(value = "Minor Genotype Frequency: [{study:}]{cohort}[<|>|<=|>=]{number}") @QueryParam("mgf") String mgf,
                                 @ApiParam(value = "Number of missing alleles: [{study:}]{cohort}[<|>|<=|>=]{number}") @QueryParam("missingAlleles") String missingAlleles,
                                 @ApiParam(value = "Number of missing genotypes: [{study:}]{cohort}[<|>|<=|>=]{number}") @QueryParam("missingGenotypes") String missingGenotypes,
                                 @ApiParam(value = "Specify if the variant annotation must exists.") @QueryParam("annotationExists") boolean annotationExists,
                                 @ApiParam(value = "Samples with a specific genotype: {samp_1}:{gt_1}(,{gt_n})*(;{samp_n}:{gt_1}(,{gt_n})*)* e.g. HG0097:0/0;HG0098:0/1,1/1") @QueryParam("genotype") String genotype,
+                                @ApiParam(value = VariantQueryParam.SAMPLES_DESCR) @QueryParam("samples") String samples,
                                 @ApiParam(value = "Consequence type SO term list. e.g. missense_variant,stop_lost or SO:0001583,SO:0001578") @QueryParam("annot-ct") String annot_ct,
                                 @ApiParam(value = "XRef") @QueryParam("annot-xref") String annot_xref,
                                 @ApiParam(value = "Biotype") @QueryParam("annot-biotype") String annot_biotype,
@@ -1124,7 +1020,7 @@ public class FileWSServer extends OpenCGAWSServer {
                 // Get all query options
                 QueryOptions queryOptions = new QueryOptions(uriInfo.getQueryParameters(), true);
                 Query query = VariantStorageManager.getVariantQuery(queryOptions);
-                query.put(VariantDBAdaptor.VariantQueryParams.FILES.key(), fileId);
+                query.put(VariantQueryParam.FILES.key(), fileId);
                 if (count) {
                     queryResult = variantManager.count(query, sessionId);
                 } else if (histogram) {
@@ -1175,69 +1071,6 @@ public class FileWSServer extends OpenCGAWSServer {
         return files;
     }
 
-    @GET
-    @Path("/{file}/update")
-    @ApiOperation(value = "Update fields of a file [WARNING]", position = 16, response = File.class,
-            notes = "WARNING: the usage of this web service is discouraged, please use the POST version instead. Be aware that this is web "
-                    + "service is not tested and this can be deprecated in a future version.")
-    public Response update(@ApiParam(value = "File id") @PathParam(value = "file") String fileIdStr,
-                           @ApiParam(value = "Study [[user@]project:]study where study and project can be either the id or alias")
-                           @QueryParam("study") String studyStr,
-                           @ApiParam(value = "File name", required = false) @QueryParam("name") String name,
-                           @ApiParam(value = "Format of the file (VCF, BCF, GVCF, SAM, BAM, BAI...UNKNOWN)", required = false) @QueryParam("format") String format,
-                           @ApiParam(value = "Bioformat of the file (VARIANT, ALIGNMENT, SEQUENCE, PEDIGREE...NONE)", required = false) @QueryParam("bioformat") String bioformat,
-                           @ApiParam(value = "Description of the file", required = false) @QueryParam("description") String description,
-                           @ApiParam(value = "Attributes", required = false) @QueryParam("attributes") String attributes,
-                           @ApiParam(value = "Stats", required = false) @QueryParam("stats") String stats,
-                           @ApiParam(value = "Sample ids", required = false) @QueryParam("sampleIds") String sampleIds,
-                           @ApiParam(value = "(DEPRECATED) Job id", hidden = true) @QueryParam("jobId") String jobIdOld,
-                           @ApiParam(value = "Job id", required = false) @QueryParam("job.id") String jobId) {
-        try {
-            /*ObjectMap parameters = new ObjectMap();
-            QueryOptions qOptions = new QueryOptions();
-            parseQueryParams(params, CatalogFileDBAdaptor.QueryParams::getParam, parameters, qOptions);*/
-            ObjectMap params = new ObjectMap(query);
-            // TODO: jobId is deprecated. Remember to remove this if after next release
-            if (params.containsKey("jobId") && !params.containsKey(FileDBAdaptor.QueryParams.JOB_ID.key())) {
-                params.put(FileDBAdaptor.QueryParams.JOB_ID.key(), params.get("jobId"));
-                params.remove("jobId");
-            }
-            params.remove(FileDBAdaptor.QueryParams.STUDY.key());
-//            params.putIfNotEmpty(FileDBAdaptor.QueryParams.NAME.key(), name);
-//            params.putIfNotEmpty(FileDBAdaptor.QueryParams.FORMAT.key(), format);
-//            params.putIfNotEmpty(FileDBAdaptor.QueryParams.BIOFORMAT.key(), bioformat);
-//            params.putIfNotEmpty(FileDBAdaptor.QueryParams.DESCRIPTION.key(), description);
-//            params.putIfNotEmpty(FileDBAdaptor.QueryParams.ATTRIBUTES.key(), attributes);
-//            params.putIfNotEmpty(FileDBAdaptor.QueryParams.STATS.key(), stats);
-//            params.putIfNotEmpty(FileDBAdaptor.QueryParams.SAMPLE_IDS.key(), sampleIds);
-//            params.putIfNotEmpty(FileDBAdaptor.QueryParams.JOB_ID.key(), jobIdOld);
-//            params.putIfNotEmpty(FileDBAdaptor.QueryParams.JOB_ID.key(), jobId);
-            AbstractManager.MyResourceId resource = fileManager.getId(fileIdStr, studyStr, sessionId);
-            QueryResult queryResult = fileManager.update(resource.getResourceId(), params, queryOptions, sessionId);
-            queryResult.setId("Update file");
-            return createOkResponse(queryResult);
-        } catch (Exception e) {
-            return createErrorResponse(e);
-        }
-    }
-
-    public static class UpdateFile {
-        public String name;
-        public File.Format format;
-        public File.Bioformat bioformat;
-        //        public String path;
-//        public String ownerId;
-//        public String creationDate;
-//        public String modificationDate;
-        public String description;
-        //        public Long size;
-//        public int experimentId;
-        public String sampleIds;
-        public Long jobId;
-        public Map<String, Object> stats;
-        public Map<String, Object> attributes;
-    }
-
     @POST
     @Path("/{file}/update")
     @ApiOperation(value = "Modify file", position = 16, response = File.class)
@@ -1255,7 +1088,15 @@ public class FileWSServer extends OpenCGAWSServer {
                 map.remove("jobId");
             }
 
+            // TODO: sampleIds is deprecated
+            if (StringUtils.isNotEmpty(params.getString("sampleIds"))
+                    && StringUtils.isEmpty(params.getString(FileDBAdaptor.QueryParams.SAMPLES.key()))) {
+                params.remove("sampleIds");
+                params.put(FileDBAdaptor.QueryParams.SAMPLES.key(), params.getString("sampleIds"));
+            }
+
             QueryResult<File> queryResult = fileManager.update(resource.getResourceId(), map, queryOptions, sessionId);
+            populateOldDeprecatedSampleIdsField(queryResult);
             queryResult.setId("Update file");
             return createOkResponse(queryResult);
         } catch (Exception e) {
@@ -1314,7 +1155,7 @@ public class FileWSServer extends OpenCGAWSServer {
 
     @GET
     @Path("/unlink")
-    @ApiOperation(value = "Unlink an external file from catalog.", position = 20, response = QueryResponse.class)
+    @ApiOperation(value = "Unlink an external file from catalog.", hidden = true, position = 20, response = QueryResponse.class)
     public Response unlink(@ApiParam(value = "File id", required = true) @QueryParam("fileId") String fileIdStr,
                            @ApiParam(value = "Study [[user@]project:]study where study and project can be either the id or alias")
                            @QueryParam("study") String studyStr) throws CatalogException {
@@ -1400,7 +1241,7 @@ public class FileWSServer extends OpenCGAWSServer {
 
     @GET
     @Path("/{file}/delete")
-    @ApiOperation(value = "Delete file", position = 23, response = QueryResponse.class)
+    @ApiOperation(value = "Delete file [NOT TESTED]", position = 23, response = QueryResponse.class)
     public Response deleteGET(@ApiParam(value = "File id") @PathParam(value = "file") String fileIdStr,
                               @ApiParam(value = "Study [[user@]project:]study where study and project can be either the id or alias")
                               @QueryParam("study") String studyStr,
@@ -1449,8 +1290,8 @@ public class FileWSServer extends OpenCGAWSServer {
                             @ApiParam(value = "description", required = false) @DefaultValue("") @QueryParam("description")
                                     String description,
                             @ApiParam(value = "size", required = false) @DefaultValue("") @QueryParam("size") Long size,
-                            @ApiParam(value = "Comma separated sampleIds", required = false) @DefaultValue("") @QueryParam("sampleIds")
-                                    String sampleIds,
+                            @ApiParam(value = "Comma separated sampleIds", hidden = true) @QueryParam("sampleIds") String sampleIds,
+                            @ApiParam(value = "Comma separated list of sample ids or names") @QueryParam("samples") String samples,
                             @ApiParam(value = "(DEPRECATED) Job id", hidden = true) @QueryParam("jobId") String jobIdOld,
                             @ApiParam(value = "Job id", required = false) @QueryParam("job.id") String jobId,
                             @ApiParam(value = "attributes", required = false) @DefaultValue("") @QueryParam("attributes") String attributes,
@@ -1459,6 +1300,9 @@ public class FileWSServer extends OpenCGAWSServer {
         try {
             if (StringUtils.isNotEmpty(studyIdStr)) {
                 studyStr = studyIdStr;
+            }
+            if (StringUtils.isNotEmpty(sampleIds) && !query.containsKey(FileDBAdaptor.QueryParams.SAMPLES.key())) {
+                query.put(FileDBAdaptor.QueryParams.SAMPLES.key(), sampleIds);
             }
             QueryResult result = fileManager.groupBy(studyStr, query, queryOptions, fields, sessionId);
             return createOkResponse(result);
@@ -1469,121 +1313,92 @@ public class FileWSServer extends OpenCGAWSServer {
 
     @GET
     @Path("/{files}/acl")
-    @ApiOperation(value = "Return the acl defined for the file or folder", position = 18, response = QueryResponse.class)
+    @ApiOperation(value = "Return the acl defined for the file or folder. If member is provided, it will only return the acl for the member.", position = 18, response = QueryResponse.class)
     public Response getAcls(@ApiParam(value = "Comma separated list of file ids", required = true) @PathParam("files") String fileIdStr,
                             @ApiParam(value = "Study [[user@]project:]study where study and project can be either the id or alias")
-                            @QueryParam("study") String studyStr) {
+                            @QueryParam("study") String studyStr,
+                            @ApiParam(value = "User or group id") @QueryParam("member") String member) {
         try {
-            return createOkResponse(catalogManager.getAllFileAcls(fileIdStr, studyStr, sessionId));
+            if (StringUtils.isEmpty(member)) {
+                return createOkResponse(catalogManager.getAllFileAcls(fileIdStr, studyStr, sessionId));
+            } else {
+                return createOkResponse(catalogManager.getFileAcl(fileIdStr, studyStr, member, sessionId));
+            }
         } catch (Exception e) {
             return createErrorResponse(e);
         }
     }
 
-
-    @GET
-    @Path("/{files}/acl/create")
-    @ApiOperation(value = "Define a set of permissions for a list of users or groups", hidden = true, position = 19,
-            response = QueryResponse.class)
-    public Response createAcl(@ApiParam(value = "Comma separated list of file ids", required = true) @PathParam("files")
-                                      String fileIdStr,
-                              @ApiParam(value = "Study [[user@]project:]study where study and project can be either the id or alias")
-                              @QueryParam("study") String studyStr,
-                              @ApiParam(value = "Comma separated list of permissions that will be granted to the member list",
-                                      required = false) @DefaultValue("") @QueryParam("permissions") String permissions,
-                              @ApiParam(value = "Comma separated list of members. Accepts: '{userId}', '@{groupId}' or '*'",
-                                      required = true) @DefaultValue("") @QueryParam("members") String members) {
-        try {
-            return createOkResponse(catalogManager.getFileManager().createAcls(fileIdStr, studyStr, members, permissions,
-                    sessionId));
-        } catch (Exception e) {
-            return createErrorResponse(e);
+    // Temporal method used by deprecated methods. This will be removed at some point.
+    @Override
+    protected File.FileAclParams getAclParams(
+            @ApiParam(value = "Comma separated list of permissions to add", required = false) @QueryParam("add") String addPermissions,
+            @ApiParam(value = "Comma separated list of permissions to remove", required = false) @QueryParam("remove") String removePermissions,
+            @ApiParam(value = "Comma separated list of permissions to set", required = false) @QueryParam("set") String setPermissions)
+            throws CatalogException {
+        int count = 0;
+        count += StringUtils.isNotEmpty(setPermissions) ? 1 : 0;
+        count += StringUtils.isNotEmpty(addPermissions) ? 1 : 0;
+        count += StringUtils.isNotEmpty(removePermissions) ? 1 : 0;
+        if (count > 1) {
+            throw new CatalogException("Only one of add, remove or set parameters are allowed.");
+        } else if (count == 0) {
+            throw new CatalogException("One of add, remove or set parameters is expected.");
         }
-    }
 
-    @POST
-    @Path("/{files}/acl/create")
-    @ApiOperation(value = "Define a set of permissions for a list of users or groups", response = QueryResponse.class)
-    public Response createAclPOST(
-            @ApiParam(value = "Comma separated list of file ids", required = true) @PathParam("files") String fileIdStr,
-            @ApiParam(value = "Study [[user@]project:]study where study and project can be either the id or alias") @QueryParam("study")
-                    String studyStr,
-            @ApiParam(value="JSON containing the parameters defined in GET. Mandatory keys: 'members'", required = true)
-                    StudyWSServer.CreateAclCommands params) {
-        try {
-            return createOkResponse(catalogManager.getFileManager().createAcls(fileIdStr, studyStr, params.members, params.permissions,
-                    sessionId));
-        } catch (Exception e) {
-            return createErrorResponse(e);
+        String permissions = null;
+        AclParams.Action action = null;
+        if (StringUtils.isNotEmpty(addPermissions)) {
+            permissions = addPermissions;
+            action = AclParams.Action.ADD;
         }
-    }
-
-    @GET
-    @Path("/{file}/acl/{memberId}/info")
-    @ApiOperation(value = "Return the permissions granted for the user or group", position = 20, response = QueryResponse.class)
-    public Response getAcl(@ApiParam(value = "File id", required = true) @PathParam("file") String fileIdStr,
-                           @ApiParam(value = "Study [[user@]project:]study where study and project can be either the id or alias")
-                           @QueryParam("study") String studyStr,
-                           @ApiParam(value = "User or group id", required = true) @PathParam("memberId") String memberId) {
-        try {
-            return createOkResponse(catalogManager.getFileAcl(fileIdStr, studyStr, memberId, sessionId));
-        } catch (Exception e) {
-            return createErrorResponse(e);
+        if (StringUtils.isNotEmpty(setPermissions)) {
+            permissions = setPermissions;
+            action = AclParams.Action.SET;
         }
-    }
-
-    @GET
-    @Path("/{file}/acl/{memberId}/update")
-    @ApiOperation(value = "Update the permissions granted for the user or group", hidden = true, position = 21,
-            response = QueryResponse.class)
-    public Response updateAcl(@ApiParam(value = "File id", required = true) @PathParam("file") String fileIdStr,
-                              @ApiParam(value = "Study [[user@]project:]study where study and project can be either the id or alias")
-                              @QueryParam("study") String studyStr,
-                              @ApiParam(value = "User or group id", required = true) @PathParam("memberId") String memberId,
-                              @ApiParam(value = "Comma separated list of permissions to add", required = false)
-                              @QueryParam("add") String addPermissions,
-                              @ApiParam(value = "Comma separated list of permissions to remove", required = false)
-                              @QueryParam("remove") String removePermissions,
-                              @ApiParam(value = "Comma separated list of permissions to set", required = false)
-                              @QueryParam("set") String setPermissions) {
-        try {
-            return createOkResponse(catalogManager.getFileManager().updateAcls(fileIdStr, studyStr, memberId, addPermissions,
-                    removePermissions, setPermissions, sessionId));
-        } catch (Exception e) {
-            return createErrorResponse(e);
+        if (StringUtils.isNotEmpty(removePermissions)) {
+            permissions = removePermissions;
+            action = AclParams.Action.REMOVE;
         }
+        return new org.opencb.opencga.catalog.models.File.FileAclParams(permissions, action, null);
     }
 
     @POST
     @Path("/{file}/acl/{memberId}/update")
-    @ApiOperation(value = "Update the permissions granted for the user or group", position = 21, response = QueryResponse.class)
+    @ApiOperation(value = "Update the permissions granted for the user or group [DEPRECATED]", position = 21, response = QueryResponse.class,
+            notes = "DEPRECATED: The usage of this webservice is discouraged. A different entrypoint /acl/{members}/update has been added "
+                    + "to also support changing permissions using queries.")
     public Response updateAclPOST(
             @ApiParam(value = "File id", required = true) @PathParam("file") String fileIdStr,
             @ApiParam(value = "User or group id", required = true) @PathParam("memberId") String memberId,
             @ApiParam(value = "Study [[user@]project:]study where study and project can be either the id or alias") @QueryParam("study")
                     String studyStr,
-            @ApiParam(value="JSON containing one of the keys 'add', 'set' or 'remove'", required = true)
-                    StudyWSServer.MemberAclUpdate params) {
+            @ApiParam(value="JSON containing one of the keys 'add', 'set' or 'remove'", required = true) StudyWSServer.MemberAclUpdateOld params) {
         try {
-            return createOkResponse(catalogManager.getFileManager().updateAcls(fileIdStr, studyStr, memberId, params.add, params.remove,
-                    params.set, sessionId));
+            File.FileAclParams aclParams = getAclParams(params.add, params.remove, params.set);
+            return createOkResponse(fileManager.updateAcl(fileIdStr, studyStr, memberId, aclParams, sessionId));
         } catch (Exception e) {
             return createErrorResponse(e);
         }
     }
 
-    @GET
-    @Path("/{files}/acl/{memberIds}/delete")
-    @ApiOperation(value = "Remove all the permissions granted for the user or group", position = 22,
-            response = QueryResponse.class)
-    public Response deleteAcl(@ApiParam(value = "Comma separated list of file ids", required = true) @PathParam("files")
-                                      String fileIdsStr,
-                              @ApiParam(value = "Study [[user@]project:]study where study and project can be either the id or alias")
-                              @QueryParam("study") String studyStr,
-                              @ApiParam(value = "Comma separated list of members", required = true) @PathParam("memberIds") String
-                                          members) {
+    public static class FileAcl extends AclParams {
+        public String file;
+        public String sample;
+    }
+
+    @POST
+    @Path("/acl/{memberIds}/update")
+    @ApiOperation(value = "Update the set of permissions granted for the member", position = 21)
+    public Response updateAcl(
+            @ApiParam(value = "Study [[user@]project:]study where study and project can be either the id or alias") @QueryParam("study")
+                    String studyStr,
+            @ApiParam(value = "Comma separated list of user or group ids", required = true) @PathParam("memberIds") String memberId,
+            @ApiParam(value="JSON containing the parameters to add ACLs", required = true) FileAcl params) {
         try {
-            return createOkResponse(catalogManager.getFileManager().removeFileAcls(fileIdsStr, studyStr, members, sessionId));
+            File.FileAclParams aclParams = new File.FileAclParams(
+                    params.getPermissions(), params.getAction(), params.sample);
+            return createOkResponse(fileManager.updateAcl(params.file, studyStr, memberId, aclParams, sessionId));
         } catch (Exception e) {
             return createErrorResponse(e);
         }
@@ -1610,77 +1425,12 @@ public class FileWSServer extends OpenCGAWSServer {
     }
 
     @Deprecated
-    public static String convertPath(String path, String sessionId) throws CatalogException {
-        return convertPath(path, sessionId, catalogManager);
-    }
-
-    // Visible only for testing purposes
-    @Deprecated
-    static String convertPath(String path, String sessionId, CatalogManager catalogManager) throws CatalogException {
-        if (path == null) {
-            return null;
-        }
-        if (path.contains("/") || !path.contains(":")) {
-            return path;
-        }
-        // Path contains :
-        if (path.startsWith(":")) {
-            return path.replace(":", "/");
-        } else {
-            // Get the user id
-            String userId = catalogManager.getUserManager().getId(sessionId);
-
-            // Get only the first part to check if it corresponds with user@project
-            int position = path.indexOf(":");
-            String project = path.substring(0, position);
-            // Check if it corresponds with a project
-            long id = catalogManager.getProjectManager().getId(userId, project);
-            if (id <= 0) {
-                // Was it a study user@study:filePath/...?
-                id = catalogManager.getStudyManager().getId(userId, project);
-                if (id <= 0) {
-                    // Then it must be user@filePath/...
-                    return path.replace(":", "/");
-                } else {
-                    // It must be user@study:filePath/...
-                    return project + ":" + path.substring(position + 1).replace(":", "/");
-                }
-            } else {
-                // Does it have the study as well? user@project:study:filePath/...
-                int position2 = path.substring(position + 1).indexOf(":");
-                if (position2 == -1) {
-                    throw new CatalogException("No file was found in " + path);
-                } else {
-                    // We should have something like user@project:study
-                    String study = project + path.substring(position).substring(0, position2 + 1);
-                    // Check if the study exists
-                    id = catalogManager.getStudyManager().getId(userId, study);
-                    if (id <= 0) {
-                        // Then it must be user@project:filePath/...
-                        throw new CatalogException("Passing files with this structure user@project:filePath/... is not supported.");
-                    } else {
-                        // The structure seems to be user@project:study:filePath/...
-                        return study + ":" + path.substring(position).substring(position2 + 2).replace(":", "/");
-                    }
-                }
+    private void populateOldDeprecatedSampleIdsField(QueryResult<File> queryResult) {
+        for (File file : queryResult.getResult()) {
+            if (file.getSamples() != null && file.getSamples().size() > 0) {
+                List<Long> sampleIds = file.getSamples().stream().map(Sample::getId).collect(Collectors.toList());
+                file.setSampleIds(sampleIds);
             }
-//            return path.substring(0, position + 1) + path.substring(position + 1).replace(":", "/");
-        }
-    }
-
-    @Deprecated
-    public static List<String> convertPathList(String path, String sessionId) throws CatalogException {
-        if (path == null) {
-            return Collections.emptyList();
-        } else if (path.contains(",")) {
-            String[] split = path.split(",");
-            List<String> pathList = new ArrayList<>(split.length);
-            for (String s : split) {
-                pathList.add(convertPath(s, sessionId));
-            }
-            return pathList;
-        } else {
-            return Collections.singletonList(convertPath(path, sessionId));
         }
     }
 

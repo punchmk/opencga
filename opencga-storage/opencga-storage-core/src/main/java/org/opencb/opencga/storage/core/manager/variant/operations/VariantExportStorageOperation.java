@@ -1,3 +1,19 @@
+/*
+ * Copyright 2015-2017 OpenCB
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.opencb.opencga.storage.core.manager.variant.operations;
 
 import org.opencb.biodata.models.core.Region;
@@ -7,7 +23,6 @@ import org.opencb.commons.datastore.core.QueryOptions;
 import org.opencb.opencga.catalog.exceptions.CatalogException;
 import org.opencb.opencga.catalog.managers.CatalogManager;
 import org.opencb.opencga.catalog.models.*;
-import org.opencb.opencga.catalog.models.File;
 import org.opencb.opencga.catalog.monitor.executors.AbstractExecutor;
 import org.opencb.opencga.core.common.UriUtils;
 import org.opencb.opencga.storage.core.StorageEngineFactory;
@@ -18,13 +33,13 @@ import org.opencb.opencga.storage.core.metadata.ExportMetadata;
 import org.opencb.opencga.storage.core.metadata.StudyConfiguration;
 import org.opencb.opencga.storage.core.metadata.StudyConfigurationManager;
 import org.opencb.opencga.storage.core.variant.VariantStorageEngine;
-import org.opencb.opencga.storage.core.variant.adaptors.VariantDBAdaptor;
+import org.opencb.opencga.storage.core.variant.adaptors.VariantQueryParam;
 import org.opencb.opencga.storage.core.variant.io.VariantMetadataImporter;
 import org.opencb.opencga.storage.core.variant.io.VariantWriterFactory;
 import org.opencb.opencga.storage.core.variant.io.VariantWriterFactory.VariantOutputFormat;
 import org.slf4j.LoggerFactory;
 
-import java.io.*;
+import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Path;
@@ -77,7 +92,7 @@ public class VariantExportStorageOperation extends StorageOperation {
                 } catch (URISyntaxException e) {
                     throw new IllegalArgumentException(e);
                 }
-                List<Region> regions = Region.parseRegions(query.getString(VariantDBAdaptor.VariantQueryParams.REGION.key()));
+                List<Region> regions = Region.parseRegions(query.getString(VariantQueryParam.REGION.key()));
                 outputFileName = buildOutputFileName(studyInfos.stream().map(StudyInfo::getStudyAlias).collect(Collectors.toList()),
                         regions);
             }
@@ -107,13 +122,12 @@ public class VariantExportStorageOperation extends StorageOperation {
 //            String outputFileName = buildOutputFileName(Collections.singletonList(study.getAlias()), regions, outputFormatStr);
             Long catalogOutDirId = getCatalogOutdirId(studyInfos.get(0).getStudyId(), options, sessionId);
 
-            // TODO: Needed?
-            for (StudyInfo studyInfo : studyInfos) {
-                StudyConfiguration studyConfiguration = updateStudyConfiguration(sessionId, studyInfo.getStudyId(), dataStore);
-            }
+//            for (StudyInfo studyInfo : studyInfos) {
+//                StudyConfiguration studyConfiguration = updateStudyConfiguration(sessionId, studyInfo.getStudyId(), dataStore);
+//            }
 
-            VariantStorageEngine variantStorageEngine = storageEngineFactory.getVariantStorageEngine(dataStore.getStorageEngine());
-            variantStorageEngine.exportData(outputFile, outputFormat, dataStore.getDbName(), query, new QueryOptions(options));
+            VariantStorageEngine variantStorageEngine = getVariantStorageEngine(dataStore);
+            variantStorageEngine.exportData(outputFile, outputFormat, query, new QueryOptions(options));
 
             if (catalogOutDirId != null && outdir != null) {
                 copyResults(outdir, catalogOutDirId, sessionId).stream().map(File::getUri);
@@ -155,18 +169,21 @@ public class VariantExportStorageOperation extends StorageOperation {
 
         try {
             DataStore dataStore = studyInfo.getDataStores().get(File.Bioformat.VARIANT);
-            VariantStorageEngine variantStorageEngine = storageEngineFactory.getVariantStorageEngine(dataStore.getStorageEngine());
-            ObjectMap options = variantStorageEngine.getOptions()
-                    .append(VariantStorageEngine.Options.DB_NAME.key(), dataStore.getDbName());
+            VariantStorageEngine variantStorageEngine = getVariantStorageEngine(dataStore);
+            ObjectMap options = variantStorageEngine.getOptions();
             ExportMetadata exportMetadata;
-            try (StudyConfigurationManager scm = variantStorageEngine.getStudyConfigurationManager(options)) {
+            try (StudyConfigurationManager scm = variantStorageEngine.getStudyConfigurationManager()) {
                 exportMetadata = variantMetadataImporter.importMetaData(inputUri, scm);
             }
+            StudyConfiguration oldSC = VariantMetadataImporter.readMetadata(inputUri).getStudies().get(0);
+            StudyConfiguration newSC = exportMetadata.getStudies().get(0);
+            Map<StudyConfiguration, StudyConfiguration> studiesOldNewMap = Collections.singletonMap(oldSC, newSC);
 
-            variantStorageEngine.importData(inputUri, exportMetadata, dataStore.getDbName(), options);
+            variantStorageEngine.importData(inputUri, exportMetadata, studiesOldNewMap, options);
 
-        } catch (ClassNotFoundException | IllegalAccessException | InstantiationException e) {
-            throw new StorageEngineException("Error importing data", e);
+        } catch (Exception e) {
+            logger.error("Error importing data");
+            throw e;
         }
 
     }
@@ -206,8 +223,8 @@ public class VariantExportStorageOperation extends StorageOperation {
                 String source = inputUri.resolve(".").relativize(inputUri).getPath();
                 String description = "Sample data imported from " + source;
                 for (Map.Entry<String, Integer> entry : studyConfiguration.getSampleIds().entrySet()) {
-                    Sample sample = catalogManager.createSample(studyId, entry.getKey(), source, description,
-                            Collections.emptyMap(), QueryOptions.empty(), sessionId).first();
+                    Sample sample = catalogManager.getSampleManager().create(Long.toString(studyId), entry.getKey(), source, description,
+                            null, false, null, Collections.emptyMap(), QueryOptions.empty(), sessionId).first();
                     samplesMap.put(sample.getName(), (int) sample.getId());
                     samplesIdMap.put(entry.getValue(), (int) sample.getId());
                 }
@@ -219,18 +236,17 @@ public class VariantExportStorageOperation extends StorageOperation {
                 for (Integer cohortId : studyConfiguration.getCalculatedStats()) {
                     String cohortName = studyConfiguration.getCohortIds().inverse().get(cohortId);
                     Set<Integer> sampleIds = studyConfiguration.getCohorts().get(cohortId);
-                    Set<Integer> newSampleIds = new HashSet<>(sampleIds.size());
+                    List<Sample> newSampleList = new ArrayList<>();
                     for (Integer sampleId : sampleIds) {
                         if (samplesIdMap.containsKey(sampleId)) {
-                            newSampleIds.add(samplesIdMap.get(sampleId));
+                            newSampleList.add(new Sample().setId(samplesIdMap.get(sampleId)));
                         }
                     }
-                    Cohort cohort = catalogManager.createCohort(
-                            studyConfiguration.getStudyId(), cohortName, Study.Type.COLLECTION,
-                            "", newSampleIds.stream().map(Long::valueOf).collect(Collectors.toList()),
-                            Collections.emptyMap(), sessionId).first();
+                    Cohort cohort = catalogManager.getCohortManager().create((long) studyConfiguration.getStudyId(), cohortName, Study
+                            .Type.COLLECTION, "", newSampleList, null, Collections.emptyMap(), sessionId).first();
                     newCohortIds.put(cohortName, (int) cohort.getId());
-                    newCohorts.put((int) cohort.getId(), newSampleIds);
+                    newCohorts.put((int) cohort.getId(), newSampleList.stream().map(Sample::getId).map(Long::intValue)
+                            .collect(Collectors.toSet()));
                     catalogManager.getCohortManager().setStatus(String.valueOf(cohort.getId()), Cohort.CohortStatus.READY, "", sessionId);
                 }
                 studyConfiguration.setCohortIds(newCohortIds);

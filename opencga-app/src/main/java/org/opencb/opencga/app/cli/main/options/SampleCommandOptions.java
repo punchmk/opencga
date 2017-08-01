@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,13 +41,9 @@ public class SampleCommandOptions {
     public IndividualCommandOptions individualCommandOptions;
 
     public AclCommandOptions.AclsCommandOptions aclsCommandOptions;
-    public AclCommandOptions.AclsCreateCommandOptions aclsCreateCommandOptions;
-    public AclCommandOptions.AclsMemberDeleteCommandOptions aclsMemberDeleteCommandOptions;
-    public AclCommandOptions.AclsMemberInfoCommandOptions aclsMemberInfoCommandOptions;
-    public AclCommandOptions.AclsMemberUpdateCommandOptions aclsMemberUpdateCommandOptions;
+    public SampleAclCommandOptions.AclsUpdateCommandOptions aclsUpdateCommandOptions;
 
     public AnnotationCommandOptions.AnnotationSetsCreateCommandOptions annotationCreateCommandOptions;
-    public AnnotationCommandOptions.AnnotationSetsAllInfoCommandOptions annotationAllInfoCommandOptions;
     public AnnotationCommandOptions.AnnotationSetsSearchCommandOptions annotationSearchCommandOptions;
     public AnnotationCommandOptions.AnnotationSetsDeleteCommandOptions annotationDeleteCommandOptions;
     public AnnotationCommandOptions.AnnotationSetsInfoCommandOptions annotationInfoCommandOptions;
@@ -57,9 +53,6 @@ public class SampleCommandOptions {
     public CommonCommandOptions commonCommandOptions;
     public DataModelOptions commonDataModelOptions;
     public NumericOptions commonNumericOptions;
-
-    private AclCommandOptions aclCommandOptions;
-    private AnnotationCommandOptions annotationCommandOptions;
 
     public SampleCommandOptions(CommonCommandOptions commonCommandOptions, DataModelOptions dataModelOptions, NumericOptions numericOptions,
                                 JCommander jCommander) {
@@ -78,20 +71,16 @@ public class SampleCommandOptions {
         this.groupByCommandOptions = new GroupByCommandOptions();
         this.individualCommandOptions = new IndividualCommandOptions();
 
-        this.annotationCommandOptions = new AnnotationCommandOptions(commonCommandOptions);
-        this.annotationCreateCommandOptions = this.annotationCommandOptions.getCreateCommandOptions();
-        this.annotationAllInfoCommandOptions = this.annotationCommandOptions.getAllInfoCommandOptions();
-        this.annotationSearchCommandOptions = this.annotationCommandOptions.getSearchCommandOptions();
-        this.annotationDeleteCommandOptions = this.annotationCommandOptions.getDeleteCommandOptions();
-        this.annotationInfoCommandOptions = this.annotationCommandOptions.getInfoCommandOptions();
-        this.annotationUpdateCommandOptions = this.annotationCommandOptions.getUpdateCommandOptions();
+        AnnotationCommandOptions annotationCommandOptions = new AnnotationCommandOptions(commonCommandOptions);
+        this.annotationCreateCommandOptions = annotationCommandOptions.getCreateCommandOptions();
+        this.annotationSearchCommandOptions = annotationCommandOptions.getSearchCommandOptions();
+        this.annotationDeleteCommandOptions = annotationCommandOptions.getDeleteCommandOptions();
+        this.annotationInfoCommandOptions = annotationCommandOptions.getInfoCommandOptions();
+        this.annotationUpdateCommandOptions = annotationCommandOptions.getUpdateCommandOptions();
 
-        aclCommandOptions = new AclCommandOptions(commonCommandOptions);
+        SampleAclCommandOptions aclCommandOptions = new SampleAclCommandOptions(commonCommandOptions);
         this.aclsCommandOptions = aclCommandOptions.getAclsCommandOptions();
-        this.aclsCreateCommandOptions = aclCommandOptions.getAclsCreateCommandOptions();
-        this.aclsMemberDeleteCommandOptions = aclCommandOptions.getAclsMemberDeleteCommandOptions();
-        this.aclsMemberInfoCommandOptions = aclCommandOptions.getAclsMemberInfoCommandOptions();
-        this.aclsMemberUpdateCommandOptions = aclCommandOptions.getAclsMemberUpdateCommandOptions();
+        this.aclsUpdateCommandOptions = aclCommandOptions.getAclsUpdateCommandOptions();
     }
 
     public class BaseSampleCommand extends StudyOption {
@@ -130,6 +119,14 @@ public class SampleCommandOptions {
         @Parameter(names = {"-d", "--description"}, description = "Description of the sample", arity = 1)
         public String description;
 
+        @Parameter(names = {"--individual"}, description = "Individual name or id to whom the sample belongs to", arity = 1)
+        public String individual;
+
+        @Parameter(names = {"--somatic"}, description = "Flag indicating that the sample comes from somatic cells", arity = 0)
+        public boolean somatic;
+
+        @Parameter(names = {"--type"}, description = "Sample type", arity = 1)
+        public String type;
     }
 
     @Parameters(commandNames = {"load"}, commandDescription = "Load samples from a pedigree file")
@@ -141,7 +138,7 @@ public class SampleCommandOptions {
         @Parameter(names = {"--ped-file"}, description = "Pedigree file id already loaded in OpenCGA", required = true, arity = 1)
         public String pedFile;
 
-        @Parameter(names = {"--variable-set-id"}, description = "VariableSetId that represents the pedigree file", arity = 1)
+        @Parameter(names = {"--variable-set"}, description = "VariableSetId that represents the pedigree file", arity = 1)
         public String variableSetId;
 
     }
@@ -173,15 +170,21 @@ public class SampleCommandOptions {
         @Parameter(names = {"--annotation-set-name"}, description = "Annotation set name.", required = false, arity = 1)
         public String annotationSetName;
 
-        @Parameter(names = {"--variable-set-id"}, description = "Variable set id.", required = false, arity = 1)
+        @Parameter(names = {"--variable-set"}, description = "Variable set id or name.", required = false, arity = 1)
         public String variableSetId;
+
+        @Parameter(names = {"--type"}, description = "Sample type", arity = 1)
+        public String type;
+
+        @Parameter(names = {"--somatic"}, description = "Flag indicating if the sample comes from somatic cells", arity = 1)
+        public Boolean somatic;
     }
 
 
-    @Parameters(commandNames = {"update"}, commandDescription = "Update cohort")
+    @Parameters(commandNames = {"update"}, commandDescription = "Update sample")
     public class UpdateCommandOptions extends BaseSampleCommand {
 
-        @Parameter(names = {"-n", "--name"}, description = "Cohort set name.", required = false, arity = 1)
+        @Parameter(names = {"-n", "--name"}, description = "New sample name.", required = false, arity = 1)
         public String name;
 
         @Parameter(names = {"--individual"}, description = "Individual id or name", required = false, arity = 1)
@@ -193,6 +196,11 @@ public class SampleCommandOptions {
         @Parameter(names = {"-d", "--description"}, description = "Description", required = false, arity = 1)
         public String description;
 
+        @Parameter(names = {"--somatic"}, description = "Boolean indicating whether the sample comes from somatic cells or not", arity = 1)
+        public Boolean somatic;
+
+        @Parameter(names = {"--type"}, description = "Sample type", arity = 1)
+        public String type;
     }
 
     @Parameters(commandNames = {"delete"}, commandDescription = "Delete the selected sample")
@@ -222,13 +230,13 @@ public class SampleCommandOptions {
         @Parameter(names = {"--individual"}, description = "Individual id or name", required = false, arity = 0)
         public String individual;
 
-        @Parameter(names = {"--annotation"}, description = "Annotation", required = false, arity = 1)
+        @Parameter(names = {"--annotation"}, description = "Annotation, e.g: key1=value(,key2=value)", required = false, arity = 1)
         public String annotation;
 
         @Parameter(names = {"--annotation-set-name"}, description = "Annotation set name.", required = false, arity = 0)
         public String annotationSetName;
 
-        @Parameter(names = {"--variable-set-id"}, description = "Variable set ids", required = false, arity = 1)
+        @Parameter(names = {"--variable-set"}, description = "Variable set ids", required = false, arity = 1)
         public String variableSetId;
     }
 
@@ -243,6 +251,42 @@ public class SampleCommandOptions {
 
         @Parameter(names = {"--sample"}, description = "List of sample ids or aliases", required = true, arity = 1)
         public String sample;
+    }
+
+    public class SampleAclCommandOptions extends AclCommandOptions {
+
+        private AclsUpdateCommandOptions aclsUpdateCommandOptions;
+
+        public SampleAclCommandOptions(CommonCommandOptions commonCommandOptions) {
+            super(commonCommandOptions);
+        }
+
+        @Parameters(commandNames = {"acl-update"}, commandDescription = "Update the permissions set for a member")
+        public class AclsUpdateCommandOptions extends AclCommandOptions.AclsUpdateCommandOptions {
+
+//            @Parameter(names = {"--sample"}, description = "Comma separated list of sample ids or names", arity = 1)
+//            public String sample;
+
+            @Parameter(names = {"--file"}, description = "Comma separated list of file ids, names or paths", arity = 1)
+            public String file;
+
+            @Parameter(names = {"--individual"}, description = "Comma separated list of individual ids or names", arity = 1)
+            public String individual;
+
+            @Parameter(names = {"--cohort"}, description = "Comma separated list of cohort ids or names", arity = 1)
+            public String cohort;
+
+            @Parameter(names = {"--propagate"}, description = "Flag parameter indicating whether to propagate the permissions to the " +
+                    "individuals related to the sample(s).", arity = 0)
+            public boolean propagate;
+        }
+
+        public AclsUpdateCommandOptions getAclsUpdateCommandOptions() {
+            if (this.aclsUpdateCommandOptions == null) {
+                this.aclsUpdateCommandOptions = new AclsUpdateCommandOptions();
+            }
+            return aclsUpdateCommandOptions;
+        }
     }
 
 }

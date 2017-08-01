@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@ package org.opencb.opencga.app.cli.admin;
 import org.opencb.commons.datastore.core.DataStoreServerAddress;
 import org.opencb.commons.datastore.mongodb.MongoDataStoreManager;
 import org.opencb.opencga.analysis.demo.AnalysisDemo;
-import org.opencb.opencga.catalog.managers.CatalogManager;
 import org.opencb.opencga.catalog.exceptions.CatalogException;
+import org.opencb.opencga.catalog.managers.CatalogManager;
 import org.opencb.opencga.catalog.monitor.MonitorService;
 import org.opencb.opencga.catalog.utils.CatalogDemo;
 import org.opencb.opencga.storage.core.exceptions.StorageEngineException;
@@ -86,7 +86,11 @@ public class CatalogCommandExecutor extends AdminCommandExecutor {
             configuration.setDatabasePrefix("demo");
         }
         configuration.setOpenRegister(true);
+
         configuration.getAdmin().setPassword("demo");
+        configuration.getAdmin().setSecretKey("demo");
+        configuration.getAdmin().setAlgorithm("HS256");
+
         CatalogDemo.createDemoDatabase(configuration, catalogCommandOptions.demoCatalogCommandOptions.force);
         CatalogManager catalogManager = new CatalogManager(configuration);
         sessionId = catalogManager.login("user1", "user1_pass", "localhost").first().getId();
@@ -110,6 +114,9 @@ public class CatalogCommandExecutor extends AdminCommandExecutor {
         if (catalogCommandOptions.commonOptions.adminPassword != null) {
             configuration.getAdmin().setPassword(catalogCommandOptions.commonOptions.adminPassword);
         }
+
+        this.configuration.getAdmin().setSecretKey(this.catalogCommandOptions.installCatalogCommandOptions.secretKey);
+        this.configuration.getAdmin().setAlgorithm(this.catalogCommandOptions.installCatalogCommandOptions.algorithm);
 
         if (configuration.getAdmin().getPassword() == null || configuration.getAdmin().getPassword().isEmpty()) {
             throw new CatalogException("No admin password found. Please, insert your password.");
@@ -138,74 +145,36 @@ public class CatalogCommandExecutor extends AdminCommandExecutor {
             }
         }
         MongoDataStoreManager mongoDataStoreManager = new MongoDataStoreManager(dataStoreServerAddresses);
-//        return mongoDataStoreManager.exists(catalogConfiguration.getDatabase().getDatabase());
-//        return mongoDataStoreManager.exists(catalogConfiguration.getDatabase().getDatabase());
         return mongoDataStoreManager.exists(database);
     }
 
-    private void delete() throws CatalogException {
-        if (catalogCommandOptions.deleteCatalogCommandOptions.databaseUser != null) {
-            configuration.getCatalog().getDatabase().setUser(catalogCommandOptions.deleteCatalogCommandOptions.databaseUser);
-        }
-        if (catalogCommandOptions.deleteCatalogCommandOptions.databasePassword != null) {
-            configuration.getCatalog().getDatabase().setPassword(catalogCommandOptions.deleteCatalogCommandOptions.databasePassword);
-        }
-        if (catalogCommandOptions.deleteCatalogCommandOptions.prefix != null) {
-            configuration.setDatabasePrefix(catalogCommandOptions.deleteCatalogCommandOptions.prefix);
-        }
-        if (catalogCommandOptions.deleteCatalogCommandOptions.databaseHost != null) {
-            configuration.getCatalog().getDatabase()
-                    .setHosts(Collections.singletonList(catalogCommandOptions.deleteCatalogCommandOptions.databaseHost));
-        }
-        if (catalogCommandOptions.commonOptions.adminPassword != null) {
-            configuration.getAdmin().setPassword(catalogCommandOptions.commonOptions.adminPassword);
-        }
-
-        if (configuration.getAdmin().getPassword() == null || configuration.getAdmin().getPassword().isEmpty()) {
-            throw new CatalogException("No admin password found. Please, insert your password.");
-        }
+    private void delete() throws CatalogException, URISyntaxException {
+        setCatalogDatabaseCredentials(catalogCommandOptions.deleteCatalogCommandOptions.databaseHost,
+                catalogCommandOptions.deleteCatalogCommandOptions.prefix, catalogCommandOptions.deleteCatalogCommandOptions.databaseUser,
+                catalogCommandOptions.deleteCatalogCommandOptions.databasePassword,
+                catalogCommandOptions.deleteCatalogCommandOptions.commonOptions.adminPassword);
 
         CatalogManager catalogManager = new CatalogManager(configuration);
 
         if (!checkDatabaseExists(catalogManager.getCatalogDatabase())) {
             throw new CatalogException("The database " + catalogManager.getCatalogDatabase() + " does not exist.");
         }
-//        System.out.println("\nDeleting " + catalogConfiguration.getDatabase().getDatabase() + " from "
-//                + catalogConfiguration.getDatabase().getHosts() + "\n");
         logger.info("\nDeleting database {} from {}\n", catalogManager.getCatalogDatabase(), configuration.getCatalog().getDatabase()
                 .getHosts());
         catalogManager.deleteCatalogDB(false);
     }
 
     private void index() throws CatalogException {
-        if (catalogCommandOptions.indexCatalogCommandOptions.databaseUser != null) {
-            configuration.getCatalog().getDatabase().setUser(catalogCommandOptions.indexCatalogCommandOptions.databaseUser);
-        }
-        if (catalogCommandOptions.indexCatalogCommandOptions.databasePassword != null) {
-            configuration.getCatalog().getDatabase().setPassword(catalogCommandOptions.indexCatalogCommandOptions.databasePassword);
-        }
-        if (catalogCommandOptions.indexCatalogCommandOptions.prefix != null) {
-            configuration.setDatabasePrefix(catalogCommandOptions.indexCatalogCommandOptions.prefix);
-        }
-        if (catalogCommandOptions.indexCatalogCommandOptions.databaseHost != null) {
-            configuration.getCatalog().getDatabase()
-                    .setHosts(Collections.singletonList(catalogCommandOptions.indexCatalogCommandOptions.databaseHost));
-        }
-        if (catalogCommandOptions.commonOptions.adminPassword != null) {
-            configuration.getAdmin().setPassword(catalogCommandOptions.commonOptions.adminPassword);
-        }
-
-        if (configuration.getAdmin().getPassword() == null || configuration.getAdmin().getPassword().isEmpty()) {
-            throw new CatalogException("No admin password found. Please, insert your password.");
-        }
+        setCatalogDatabaseCredentials(catalogCommandOptions.indexCatalogCommandOptions.databaseHost,
+                catalogCommandOptions.indexCatalogCommandOptions.prefix, catalogCommandOptions.indexCatalogCommandOptions.databaseUser,
+                catalogCommandOptions.indexCatalogCommandOptions.databasePassword,
+                catalogCommandOptions.indexCatalogCommandOptions.commonOptions.adminPassword);
 
         CatalogManager catalogManager = new CatalogManager(configuration);
         if (!checkDatabaseExists(catalogManager.getCatalogDatabase())) {
             throw new CatalogException("The database " + catalogManager.getCatalogDatabase() + " does not exist.");
         }
 
-//        System.out.println("\nChecking and installing non-existent indexes in" + catalogConfiguration.getDatabase().getDatabase() + " in "
-//                + catalogConfiguration.getDatabase().getHosts() + "\n");
         logger.info("\nChecking and installing non-existent indexes in {} in {}\n",
                 catalogManager.getCatalogDatabase(), configuration.getCatalog().getDatabase().getHosts());
         catalogManager.getUserManager().validatePassword("admin", configuration.getAdmin().getPassword(), true);

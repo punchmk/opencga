@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,7 @@ import org.opencb.commons.datastore.core.ObjectMap;
  */
 public class AuditRecord {
 
-    public enum Resource {user, project, study, file, sample, job, individual, cohort, dataset, panel, tool, variableSet}
+    public enum Resource {user, project, study, file, sample, job, individual, cohort, dataset, panel, family, tool, variableSet}
     public enum Action {create, update, view, delete, restore, index, login, logout, share}
     public enum Magnitude {low, medium, high}
 

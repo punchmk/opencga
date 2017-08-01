@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -125,12 +125,14 @@ public class DocumentToStudyVariantEntryConverter {
         StudyEntry study = new StudyEntry(getStudyName(studyId));
 
 //        String fileId = (String) object.get(FILEID_FIELD);
-        Document fileObject = null;
+        Document fileObject;
         if (document.containsKey(FILES_FIELD)) {
             List<FileEntry> files = new ArrayList<>(((List) document.get(FILES_FIELD)).size());
             for (Document fileDocument : (List<Document>) document.get(FILES_FIELD)) {
-                Integer fid = ((Integer) fileDocument.get(FILEID_FIELD));
-
+                Integer fid = ((Number) fileDocument.get(FILEID_FIELD)).intValue();
+                if (fid < 0) {
+                    fid = -fid;
+                }
                 if (returnedFiles != null && !returnedFiles.contains(fid)) {
                     continue;
                 }
@@ -174,19 +176,7 @@ public class DocumentToStudyVariantEntryConverter {
             List<Document> list = (List<Document>) document.get(ALTERNATES_FIELD);
             if (list != null && !list.isEmpty()) {
                 for (Document alternateDocument : list) {
-                    VariantType variantType = null;
-                    String type = (String) alternateDocument.get(ALTERNATES_TYPE);
-                    if (type != null && !type.isEmpty()) {
-                        variantType = VariantType.valueOf(type);
-
-                    }
-                    AlternateCoordinate alternateCoordinate = new AlternateCoordinate(
-                            (String) alternateDocument.get(ALTERNATES_CHR),
-                            (Integer) alternateDocument.get(ALTERNATES_START),
-                            (Integer) alternateDocument.get(ALTERNATES_END),
-                            (String) alternateDocument.get(ALTERNATES_REF),
-                            (String) alternateDocument.get(ALTERNATES_ALT),
-                            variantType);
+                    AlternateCoordinate alternateCoordinate = convertToAlternateCoordinate(alternateDocument);
                     if (study.getSecondaryAlternates() == null) {
                         study.setSecondaryAlternates(new ArrayList<>(list.size()));
                     }
@@ -215,6 +205,23 @@ public class DocumentToStudyVariantEntryConverter {
         }
 
         return study;
+    }
+
+    public static AlternateCoordinate convertToAlternateCoordinate(Document alternateDocument) {
+        VariantType variantType = null;
+        String type = (String) alternateDocument.get(ALTERNATES_TYPE);
+
+        if (type != null && !type.isEmpty()) {
+            variantType = VariantType.valueOf(type);
+        }
+
+        return new AlternateCoordinate(
+                (String) alternateDocument.get(ALTERNATES_CHR),
+                (Integer) alternateDocument.get(ALTERNATES_START),
+                (Integer) alternateDocument.get(ALTERNATES_END),
+                (String) alternateDocument.get(ALTERNATES_REF),
+                (String) alternateDocument.get(ALTERNATES_ALT),
+                variantType);
     }
 
     public String getStudyName(int studyId) {

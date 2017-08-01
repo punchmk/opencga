@@ -1,6 +1,6 @@
 
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 package org.opencb.opencga.catalog.models;
 
 import org.opencb.opencga.catalog.models.acls.AbstractAcl;
+import org.opencb.opencga.catalog.models.acls.AclParams;
 import org.opencb.opencga.catalog.models.acls.permissions.StudyAclEntry;
 import org.opencb.opencga.core.common.TimeUtils;
 
@@ -60,6 +61,7 @@ public class Study extends AbstractAcl<StudyAclEntry> {
 
     private URI uri;
 
+    private int release;
     private Map<File.Bioformat, DataStore> dataStores;
 
     private Map<String, Object> stats;
@@ -67,21 +69,20 @@ public class Study extends AbstractAcl<StudyAclEntry> {
 
 
     public Study() {
-        this(null, null, null, null, new Status(), null);
     }
 
-    public Study(String name, String alias, Type type, String description, Status status, URI uri) {
+    public Study(String name, String alias, Type type, String description, Status status, URI uri, int release) {
         this(-1, name, alias, type, TimeUtils.getTime(), description, status, null, 0, "",
-                null, new ArrayList<>(), new ArrayList<>(), new LinkedList<>(), new LinkedList<>(), new LinkedList<>(), new LinkedList<>(),
-                new LinkedList<>(), new LinkedList<>(), Collections.emptyList(), new LinkedList<>(), uri, new HashMap<>(), new HashMap<>(),
-                new HashMap<>()
+                new ArrayList<>(), new ArrayList<>(), new ArrayList<>(), new LinkedList<>(), new LinkedList<>(), new LinkedList<>(),
+                new LinkedList<>(), new LinkedList<>(), new LinkedList<>(), Collections.emptyList(), new LinkedList<>(), uri,
+                new HashMap<>(), release, new HashMap<>(), new HashMap<>()
         );
     }
 
     public Study(long id, String name, String alias, Type type, String creationDate, String description, Status status, String lastModified,
                  long size, String cipher, List<Group> groups, List<StudyAclEntry> acl, List<Experiment> experiments, List<File> files,
                  List<Job> jobs, List<Individual> individuals, List<Sample> samples, List<Dataset> datasets, List<Cohort> cohorts,
-                 List<DiseasePanel> panels, List<VariableSet> variableSets, URI uri, Map<File.Bioformat, DataStore> dataStores,
+                 List<DiseasePanel> panels, List<VariableSet> variableSets, URI uri, Map<File.Bioformat, DataStore> dataStores, int release,
                  Map<String, Object> stats, Map<String, Object> attributes) {
         this.id = id;
         this.name = name;
@@ -106,6 +107,7 @@ public class Study extends AbstractAcl<StudyAclEntry> {
         this.variableSets = variableSets;
         this.uri = uri;
         this.stats = stats;
+        this.release = release;
         this.dataStores = dataStores;
         this.attributes = attributes;
     }
@@ -149,6 +151,7 @@ public class Study extends AbstractAcl<StudyAclEntry> {
         sb.append(", panels=").append(panels);
         sb.append(", variableSets=").append(variableSets);
         sb.append(", uri=").append(uri);
+        sb.append(", release=").append(release);
         sb.append(", dataStores=").append(dataStores);
         sb.append(", stats=").append(stats);
         sb.append(", attributes=").append(attributes);
@@ -350,6 +353,15 @@ public class Study extends AbstractAcl<StudyAclEntry> {
         return this;
     }
 
+    public int getRelease() {
+        return release;
+    }
+
+    public Study setRelease(int release) {
+        this.release = release;
+        return this;
+    }
+
     public Map<File.Bioformat, DataStore> getDataStores() {
         return dataStores;
     }
@@ -375,6 +387,39 @@ public class Study extends AbstractAcl<StudyAclEntry> {
     public Study setAttributes(Map<String, Object> attributes) {
         this.attributes = attributes;
         return this;
+    }
+
+    // Acl params to communicate the WS and the sample manager
+    public static class StudyAclParams extends AclParams {
+
+        private String template;
+
+        public StudyAclParams() {
+        }
+
+        public StudyAclParams(String permissions, Action action, String template) {
+            super(permissions, action);
+            this.template = template;
+        }
+
+        @Override
+        public String toString() {
+            final StringBuilder sb = new StringBuilder("StudyAclParams{");
+            sb.append("permissions='").append(permissions).append('\'');
+            sb.append(", action=").append(action);
+            sb.append(", template='").append(template).append('\'');
+            sb.append('}');
+            return sb.toString();
+        }
+
+        public String getTemplate() {
+            return template;
+        }
+
+        public StudyAclParams setTemplate(String template) {
+            this.template = template;
+            return this;
+        }
     }
 
 }

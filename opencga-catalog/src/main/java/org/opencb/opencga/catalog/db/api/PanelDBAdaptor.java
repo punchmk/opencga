@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ import org.opencb.commons.datastore.core.QueryParam;
 import org.opencb.commons.datastore.core.QueryResult;
 import org.opencb.opencga.catalog.exceptions.CatalogDBException;
 import org.opencb.opencga.catalog.models.DiseasePanel;
-import org.opencb.opencga.catalog.models.acls.permissions.DiseasePanelAclEntry;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -32,7 +31,7 @@ import static org.opencb.commons.datastore.core.QueryParam.Type.*;
 /**
  * Created by pfurio on 01/06/16.
  */
-public interface PanelDBAdaptor extends AclDBAdaptor<DiseasePanel, DiseasePanelAclEntry> {
+public interface PanelDBAdaptor extends DBAdaptor<DiseasePanel> {
 
     enum QueryParams implements QueryParam {
         ID("id", INTEGER, ""),
@@ -47,10 +46,6 @@ public interface PanelDBAdaptor extends AclDBAdaptor<DiseasePanel, DiseasePanelA
         STATUS_NAME("status.name", TEXT, ""),
         STATUS_MSG("status.msg", TEXT, ""),
         STATUS_DATE("status.date", TEXT, ""),
-
-        ACL("acl", TEXT_ARRAY, ""),
-        ACL_MEMBER("acl.member", TEXT_ARRAY, ""),
-        ACL_PERMISSIONS("acl.permissions", TEXT_ARRAY, ""),
 
         STUDY_ID("studyId", INTEGER_ARRAY, "");
 
@@ -114,14 +109,5 @@ public interface PanelDBAdaptor extends AclDBAdaptor<DiseasePanel, DiseasePanelA
     QueryResult<DiseasePanel> get(long diseasePanelId, QueryOptions options) throws CatalogDBException;
 
     long getStudyId(long panelId) throws CatalogDBException;
-
-    /**
-     * Remove all the Acls defined for the member in the resource.
-     *
-     * @param studyId study id where the Acls will be removed from.
-     * @param member member from whom the Acls will be removed.
-     * @throws CatalogDBException if any problem occurs during the removal.
-     */
-    void removeAclsFromStudy(long studyId, String member) throws CatalogDBException;
 
 }

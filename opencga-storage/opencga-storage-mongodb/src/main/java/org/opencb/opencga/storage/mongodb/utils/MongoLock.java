@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@
 
 package org.opencb.opencga.storage.mongodb.utils;
 
+import com.mongodb.ReadPreference;
+import com.mongodb.WriteConcern;
 import org.apache.commons.lang3.time.StopWatch;
 import org.bson.conversions.Bson;
 import org.opencb.commons.datastore.mongodb.MongoDBCollection;
@@ -51,7 +53,9 @@ public class MongoLock {
 
     public MongoLock(MongoDBCollection collection, String lockField) {
         this.collection = collection;
-        lockWriteField = lockField + "." + WRITE_FIELD;
+        this.collection.withReadPreference(ReadPreference.primary())
+                .withWriteConcern(WriteConcern.ACKNOWLEDGED);
+        lockWriteField = lockField + '.' + WRITE_FIELD;
     }
 
     /**

@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ import java.util.List;
 /**
  * Created by imedina on 22/01/17.
  */
+@Parameters(commandNames = {"alignment"}, commandDescription = "Alignment management.")
 public class StorageAlignmentCommandOptions {
 
     public IndexAlignmentsCommandOptions indexAlignmentsCommandOptions;

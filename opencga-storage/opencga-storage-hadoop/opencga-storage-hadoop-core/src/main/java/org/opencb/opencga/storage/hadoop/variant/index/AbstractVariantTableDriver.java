@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -40,11 +40,16 @@ import org.apache.phoenix.util.SchemaUtil;
 import org.opencb.commons.datastore.core.QueryOptions;
 import org.opencb.commons.datastore.core.QueryResult;
 import org.opencb.opencga.storage.core.metadata.StudyConfiguration;
+import org.opencb.opencga.storage.core.metadata.StudyConfigurationManager;
+import org.opencb.opencga.storage.core.variant.VariantStorageEngine;
 import org.opencb.opencga.storage.hadoop.utils.HBaseManager;
+import org.opencb.opencga.storage.hadoop.variant.AbstractAnalysisTableDriver;
 import org.opencb.opencga.storage.hadoop.variant.GenomeHelper;
-import org.opencb.opencga.storage.hadoop.variant.metadata.HBaseStudyConfigurationManager;
+import org.opencb.opencga.storage.hadoop.variant.HadoopVariantStorageEngine;
+import org.opencb.opencga.storage.hadoop.variant.index.phoenix.VariantPhoenixKeyFactory;
+import org.opencb.opencga.storage.hadoop.variant.metadata.HBaseStudyConfigurationDBAdaptor;
 import org.opencb.opencga.storage.hadoop.variant.archive.ArchiveDriver;
-import org.opencb.opencga.storage.hadoop.variant.archive.ArchiveHelper;
+import org.opencb.opencga.storage.hadoop.variant.archive.ArchiveTableHelper;
 import org.opencb.opencga.storage.hadoop.variant.index.phoenix.VariantPhoenixHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,27 +62,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import static org.opencb.opencga.storage.hadoop.variant.HadoopVariantStorageEngine.OPENCGA_STORAGE_HADOOP_MAPREDUCE_SCANNER_TIMEOUT;
+import static org.opencb.opencga.storage.hadoop.variant.HadoopVariantStorageEngine.MAPREDUCE_HBASE_SCANNER_TIMEOUT;
 
 /**
  * @author Matthias Haimel mh719+git@cam.ac.uk
  *
  */
+@Deprecated
 public abstract class AbstractVariantTableDriver extends Configured implements Tool {
     private static final Logger LOG = LoggerFactory.getLogger(AbstractVariantTableDriver.class);
 
-    public static final String CONFIG_VARIANT_FILE_IDS          = "opencga.variant.input.file_ids";
-    public static final String CONFIG_VARIANT_TABLE_NAME        = "opencga.variant.table.name";
-    public static final String CONFIG_VARIANT_TABLE_COMPRESSION = "opencga.variant.table.compression";
-    public static final String CONFIG_VARIANT_TABLE_PRESPLIT_SIZE = "opencga.variant.table.presplit.size";
-    public static final String TIMESTAMP                        = "opencga.variant.table.timestamp";
-
-    public static final String HBASE_KEYVALUE_SIZE_MAX = "hadoop.load.variant.hbase.client.keyvalue.maxsize";
-    public static final String HBASE_SCAN_CACHING = "hadoop.load.variant.scan.caching";
-
     private VariantTableHelper variantTablehelper;
 
-    protected HBaseStudyConfigurationManager scm;
+    protected StudyConfigurationManager scm;
     protected StudyConfiguration studyConfiguration;
 
     public AbstractVariantTableDriver() { /* nothing */ }
@@ -95,14 +92,14 @@ public abstract class AbstractVariantTableDriver extends Configured implements T
     @Override
     public int run(String[] args) throws Exception {
         Configuration conf = getConf();
-        int maxKeyValueSize = conf.getInt(HBASE_KEYVALUE_SIZE_MAX, 10485760); // 10MB
+        int maxKeyValueSize = conf.getInt(HadoopVariantStorageEngine.MAPREDUCE_HBASE_KEYVALUE_SIZE_MAX, 10485760); // 10MB
         getLog().info("HBASE: set " + ConnectionConfiguration.MAX_KEYVALUE_SIZE_KEY + " to " + maxKeyValueSize);
         conf.setInt(ConnectionConfiguration.MAX_KEYVALUE_SIZE_KEY, maxKeyValueSize); // always overwrite server default (usually 1MB)
 
         String inTable = conf.get(ArchiveDriver.CONFIG_ARCHIVE_TABLE_NAME, StringUtils.EMPTY);
-        String outTable = conf.get(CONFIG_VARIANT_TABLE_NAME, StringUtils.EMPTY);
+        String outTable = conf.get(AbstractAnalysisTableDriver.CONFIG_VARIANT_TABLE_NAME, StringUtils.EMPTY);
         String[] fileArr = argFileArray();
-        Integer studyId = conf.getInt(GenomeHelper.CONFIG_STUDY_ID, -1);
+        Integer studyId = conf.getInt(VariantStorageEngine.Options.STUDY_ID.key(), -1);
 
         /* -------------------------------*/
         // Validate parameters CHECK
@@ -132,28 +129,26 @@ public abstract class AbstractVariantTableDriver extends Configured implements T
         getLog().info(String.format("Use table %s as input", inTable));
 
         GenomeHelper.setStudyId(conf, studyId);
-        VariantTableHelper.setOutputTableName(conf, outTable);
-        VariantTableHelper.setInputTableName(conf, inTable);
-
-        VariantTableHelper gh = getHelper();
+        VariantTableHelper.setAnalysisTable(conf, outTable);
+        VariantTableHelper.setArchiveTable(conf, inTable);
 
         /* -------------------------------*/
         // Validate input CHECK
-        HBaseManager hBaseManager = gh.getHBaseManager();
-        if (!hBaseManager.tableExists(inTable)) {
-            throw new IllegalArgumentException(String.format("Input table %s does not exist!!!", inTable));
+        try (HBaseManager hBaseManager = new HBaseManager(conf)) {
+            if (!hBaseManager.tableExists(inTable)) {
+                throw new IllegalArgumentException(String.format("Input table %s does not exist!!!", inTable));
+            }
         }
 
         /* -------------------------------*/
         // JOB setup
-        setConf(conf);
         Job job = createJob(outTable, fileArr);
 
         // QUERY design
-        Scan scan = createScan(gh, fileArr);
+        Scan scan = createScan(fileArr);
 
         // set other scan attrs
-        boolean addDependencyJar = conf.getBoolean(GenomeHelper.CONFIG_HBASE_ADD_DEPENDENCY_JARS, true);
+        boolean addDependencyJar = conf.getBoolean(HadoopVariantStorageEngine.MAPREDUCE_ADD_DEPENDENCY_JARS, true);
         initMapReduceJob(inTable, outTable, job, scan, addDependencyJar);
 
         boolean succeed = executeJob(job);
@@ -178,7 +173,7 @@ public abstract class AbstractVariantTableDriver extends Configured implements T
     protected abstract String getJobOperationName();
 
     protected String[] argFileArray() {
-        return getConf().getStrings(CONFIG_VARIANT_FILE_IDS, new String[0]);
+        return getConf().getStrings(VariantStorageEngine.Options.FILE_ID.key(), new String[0]);
     }
 
     protected VariantTableHelper getHelper() {
@@ -236,16 +231,16 @@ public abstract class AbstractVariantTableDriver extends Configured implements T
 
         // Increase the ScannerTimeoutPeriod to avoid ScannerTimeoutExceptions
         // See opencb/opencga#352 for more info.
-        int scannerTimeout = getConf().getInt(OPENCGA_STORAGE_HADOOP_MAPREDUCE_SCANNER_TIMEOUT,
+        int scannerTimeout = getConf().getInt(MAPREDUCE_HBASE_SCANNER_TIMEOUT,
                 getConf().getInt(HConstants.HBASE_CLIENT_SCANNER_TIMEOUT_PERIOD, HConstants.DEFAULT_HBASE_CLIENT_SCANNER_TIMEOUT_PERIOD));
         getLog().info("Set Scanner timeout to " + scannerTimeout + " ...");
         job.getConfiguration().setInt(HConstants.HBASE_CLIENT_SCANNER_TIMEOUT_PERIOD, scannerTimeout);
         return job;
     }
 
-    protected Scan createScan(VariantTableHelper gh, String[] fileArr) {
+    protected Scan createScan(String[] fileArr) {
         Scan scan = new Scan();
-        int caching = getConf().getInt(HBASE_SCAN_CACHING, 50);
+        int caching = getConf().getInt(HadoopVariantStorageEngine.MAPREDUCE_HBASE_SCAN_CACHING, 50);
         getLog().info("Scan set Caching to " + caching);
         scan.setCaching(caching);        // 1 is the default in Scan, 200 caused timeout issues.
         scan.setCacheBlocks(false);  // don't set to true for MR jobs
@@ -259,8 +254,8 @@ public abstract class AbstractVariantTableDriver extends Configured implements T
         FilterList filter = new FilterList(FilterList.Operator.MUST_PASS_ONE);
         for (String fileIdStr : fileArr) {
             int id = Integer.parseInt(fileIdStr);
-            filter.addFilter(new ColumnRangeFilter(Bytes.toBytes(ArchiveHelper.getColumnName(id)), true,
-                    Bytes.toBytes(ArchiveHelper.getColumnName(id)), true));
+            filter.addFilter(new ColumnRangeFilter(Bytes.toBytes(ArchiveTableHelper.getColumnName(id)), true,
+                    Bytes.toBytes(ArchiveTableHelper.getColumnName(id)), true));
         }
         filter.addFilter(new ColumnPrefixFilter(GenomeHelper.VARIANT_COLUMN_B_PREFIX));
         scan.setFilter(filter);
@@ -268,7 +263,7 @@ public abstract class AbstractVariantTableDriver extends Configured implements T
     }
 
     protected StudyConfiguration loadStudyConfiguration() throws IOException {
-        HBaseStudyConfigurationManager scm = getStudyConfigurationManager();
+        StudyConfigurationManager scm = getStudyConfigurationManager();
         int studyId = getHelper().getStudyId();
         QueryResult<StudyConfiguration> res = scm.getStudyConfiguration(studyId, new QueryOptions());
         if (res.getResult().size() != 1) {
@@ -277,30 +272,33 @@ public abstract class AbstractVariantTableDriver extends Configured implements T
         return res.first();
     }
 
-    protected HBaseStudyConfigurationManager getStudyConfigurationManager() throws IOException {
+    protected StudyConfigurationManager getStudyConfigurationManager() throws IOException {
         if (scm == null) {
-            byte[] outTable = getHelper().getOutputTable();
-            scm = new HBaseStudyConfigurationManager(Bytes.toString(outTable), getConf(), null);
+            byte[] outTable = getHelper().getAnalysisTable();
+            scm = new StudyConfigurationManager(new HBaseStudyConfigurationDBAdaptor(Bytes.toString(outTable), getConf(), null));
         }
         return scm;
     }
 
+    @Deprecated
     public static String buildCommandLineArgs(String server, String inputTable, String outputTable, int studyId,
                                               List<Integer> fileIds, Map<String, Object> other) {
         StringBuilder stringBuilder = new StringBuilder().append(server).append(' ').append(inputTable).append(' ')
                 .append(outputTable).append(' ').append(studyId).append(' ');
 
         stringBuilder.append(fileIds.stream().map(Object::toString).collect(Collectors.joining(",")));
-        ArchiveDriver.addOtherParams(other, stringBuilder);
+        AbstractAnalysisTableDriver.addOtherParams(other, stringBuilder);
         return stringBuilder.toString();
     }
 
+    @Deprecated
     public static boolean createVariantTableIfNeeded(GenomeHelper genomeHelper, String tableName) throws IOException {
         try (Connection con = ConnectionFactory.createConnection(genomeHelper.getConf())) {
             return createVariantTableIfNeeded(genomeHelper, tableName, con);
         }
     }
 
+    @Deprecated
     public static boolean createVariantTableIfNeeded(GenomeHelper genomeHelper, String tableName, Connection con)
             throws IOException {
         VariantPhoenixHelper variantPhoenixHelper = new VariantPhoenixHelper(genomeHelper);
@@ -316,14 +314,14 @@ public abstract class AbstractVariantTableDriver extends Configured implements T
             }
         }
 
-        int nsplits = genomeHelper.getConf().getInt(CONFIG_VARIANT_TABLE_PRESPLIT_SIZE, 100);
+        int nsplits = genomeHelper.getConf().getInt(HadoopVariantStorageEngine.VARIANT_TABLE_PRESPLIT_SIZE, 100);
         List<byte[]> splitList = GenomeHelper.generateBootPreSplitsHuman(
                 nsplits,
-                (chr, pos) -> genomeHelper.generateVariantRowKey(chr, pos, "", ""));
+                (chr, pos) -> VariantPhoenixKeyFactory.generateVariantRowKey(chr, pos, "", ""));
         boolean newTable = HBaseManager.createTableIfNeeded(con, tableName, genomeHelper.getColumnFamily(),
                 splitList, Compression.getCompressionAlgorithmByName(
                         genomeHelper.getConf().get(
-                                CONFIG_VARIANT_TABLE_COMPRESSION,
+                                HadoopVariantStorageEngine.VARIANT_TABLE_COMPRESSION,
                                 Compression.Algorithm.SNAPPY.getName())));
         if (newTable) {
             try (java.sql.Connection jdbcConnection = variantPhoenixHelper.newJdbcConnection()) {
@@ -359,9 +357,9 @@ public abstract class AbstractVariantTableDriver extends Configured implements T
 
         conf = HBaseManager.addHBaseSettings(conf, toolArgs[0]);
         conf.set(ArchiveDriver.CONFIG_ARCHIVE_TABLE_NAME, toolArgs[1]);
-        conf.set(CONFIG_VARIANT_TABLE_NAME, toolArgs[2]);
-        conf.set(GenomeHelper.CONFIG_STUDY_ID, toolArgs[3]);
-        conf.setStrings(CONFIG_VARIANT_FILE_IDS, toolArgs[4].split(","));
+        conf.set(AbstractAnalysisTableDriver.CONFIG_VARIANT_TABLE_NAME, toolArgs[2]);
+        conf.set(VariantStorageEngine.Options.STUDY_ID.key(), toolArgs[3]);
+        conf.setStrings(VariantStorageEngine.Options.FILE_ID.key(), toolArgs[4].split(","));
         for (int i = fixedSizeArgs; i < toolArgs.length; i = i + 2) {
             conf.set(toolArgs[i], toolArgs[i + 1]);
         }

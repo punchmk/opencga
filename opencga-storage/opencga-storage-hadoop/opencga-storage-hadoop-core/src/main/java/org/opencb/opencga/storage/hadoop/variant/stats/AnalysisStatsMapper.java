@@ -1,3 +1,19 @@
+/*
+ * Copyright 2015-2017 OpenCB
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.opencb.opencga.storage.hadoop.variant.stats;
 
 import com.google.common.collect.BiMap;
@@ -11,10 +27,13 @@ import org.opencb.biodata.models.variant.Variant;
 import org.opencb.biodata.models.variant.VariantSource;
 import org.opencb.opencga.storage.core.variant.stats.VariantStatisticsCalculator;
 import org.opencb.opencga.storage.core.variant.stats.VariantStatsWrapper;
-import org.opencb.opencga.storage.hadoop.variant.AbstractHBaseMapReduce;
+import org.opencb.opencga.storage.hadoop.variant.AbstractHBaseVariantMapper;
+import org.opencb.opencga.storage.hadoop.variant.AnalysisTableMapReduceHelper;
 import org.opencb.opencga.storage.hadoop.variant.GenomeHelper;
 import org.opencb.opencga.storage.hadoop.variant.converters.stats.VariantStatsToHBaseConverter;
-import org.opencb.opencga.storage.hadoop.variant.index.AbstractVariantTableMapReduce;
+import org.opencb.opencga.storage.hadoop.variant.index.phoenix.VariantPhoenixKeyFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -26,8 +45,9 @@ import java.util.stream.Collectors;
 /**
  * Created by mh719 on 07/12/2016.
  */
-public class AnalysisStatsMapper extends AbstractHBaseMapReduce<ImmutableBytesWritable, Put> {
+public class AnalysisStatsMapper extends AbstractHBaseVariantMapper<ImmutableBytesWritable, Put> {
 
+    private Logger logger = LoggerFactory.getLogger(AnalysisStatsMapper.class);
     private VariantStatisticsCalculator variantStatisticsCalculator;
     private String studyId;
     private byte[] studiesRow;
@@ -38,7 +58,8 @@ public class AnalysisStatsMapper extends AbstractHBaseMapReduce<ImmutableBytesWr
     protected void setup(Context context) throws IOException, InterruptedException {
         super.setup(context);
         this.getHbaseToVariantConverter().setSimpleGenotypes(true);
-        studiesRow = getHelper().generateVariantRowKey(GenomeHelper.DEFAULT_METADATA_ROW_KEY, 0);
+        this.getHbaseToVariantConverter().setReadFullSamplesData(false);
+        studiesRow = VariantPhoenixKeyFactory.generateVariantRowKey(GenomeHelper.DEFAULT_METADATA_ROW_KEY, 0);
         variantStatisticsCalculator = new VariantStatisticsCalculator(true);
         this.variantStatisticsCalculator.setAggregationType(VariantSource.Aggregation.NONE, null);
         this.studyId = Integer.valueOf(this.getStudyConfiguration().getStudyId()).toString();
@@ -50,7 +71,7 @@ public class AnalysisStatsMapper extends AbstractHBaseMapReduce<ImmutableBytesWr
                 .map(p -> new MutablePair<>(p.getKey(),
                         p.getValue().stream().map(i -> sampleIds.get(i)).collect(Collectors.toSet())))
                 .collect(Collectors.toMap(p -> p.getKey(), p -> p.getValue()));
-        this.samples.forEach((k, v) -> getLog().info("Calculate {} stats for cohort {} with {}", studyId, k, StringUtils.join(v, ",")));
+        this.samples.forEach((k, v) -> logger.info("Calculate {} stats for cohort {} with {}", studyId, k, StringUtils.join(v, ",")));
     }
 
     @Override
@@ -66,11 +87,11 @@ public class AnalysisStatsMapper extends AbstractHBaseMapReduce<ImmutableBytesWr
                     if (null != convert) {
                         context.write(key, convert);
                         done = true;
-                        context.getCounter(AbstractVariantTableMapReduce.COUNTER_GROUP_NAME, "stats.put").increment(1);
+                        context.getCounter(AnalysisTableMapReduceHelper.COUNTER_GROUP_NAME, "stats.put").increment(1);
                     }
                 }
                 if (done) {
-                    context.getCounter(AbstractVariantTableMapReduce.COUNTER_GROUP_NAME, "variants").increment(1);
+                    context.getCounter(AnalysisTableMapReduceHelper.COUNTER_GROUP_NAME, "variants").increment(1);
                 }
             } catch (IllegalStateException e) {
                 throw new IllegalStateException("Problem with row [hex:" + Bytes.toHex(key.copyBytes()) + "]", e);

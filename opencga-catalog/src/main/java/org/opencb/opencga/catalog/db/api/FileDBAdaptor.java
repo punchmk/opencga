@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,12 +20,10 @@ import org.opencb.commons.datastore.core.Query;
 import org.opencb.commons.datastore.core.QueryOptions;
 import org.opencb.commons.datastore.core.QueryParam;
 import org.opencb.commons.datastore.core.QueryResult;
-import org.opencb.opencga.catalog.db.AbstractDBAdaptor;
 import org.opencb.opencga.catalog.exceptions.CatalogDBException;
 import org.opencb.opencga.catalog.models.File;
-import org.opencb.opencga.catalog.models.acls.permissions.FileAclEntry;
+import org.opencb.opencga.catalog.models.Sample;
 
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -35,7 +33,7 @@ import static org.opencb.commons.datastore.core.QueryParam.Type.*;
 /**
  * @author Jacobo Coll &lt;jacobo167@gmail.com&gt;
  */
-public interface FileDBAdaptor extends AclDBAdaptor<File, FileAclEntry> {
+public interface FileDBAdaptor extends DBAdaptor<File> {
 
     enum QueryParams implements QueryParam {
         DELETE_DATE("deleteDate", TEXT_ARRAY, ""),
@@ -51,6 +49,7 @@ public interface FileDBAdaptor extends AclDBAdaptor<File, FileAclEntry> {
         MODIFICATION_DATE("modificationDate", TEXT_ARRAY, ""),
         DESCRIPTION("description", TEXT_ARRAY, ""),
         EXTERNAL("external", BOOLEAN, ""),
+        RELEASE("release", INTEGER, ""),
         STATUS("status", TEXT_ARRAY, ""),
         STATUS_NAME("status.name", TEXT, ""),
         STATUS_MSG("status.msg", TEXT, ""),
@@ -59,17 +58,10 @@ public interface FileDBAdaptor extends AclDBAdaptor<File, FileAclEntry> {
         RELATED_FILES_RELATION("relatedFiles.relation", TEXT, ""),
         SIZE("size", INTEGER_ARRAY, ""),
         EXPERIMENT_ID("experiment.id", INTEGER_ARRAY, ""),
-        SAMPLE_IDS("sampleIds", INTEGER_ARRAY, ""),
+        SAMPLES("samples", TEXT_ARRAY, ""),
+        SAMPLE_IDS("samples.id", INTEGER_ARRAY, ""),
 
         JOB_ID("job.id", INTEGER_ARRAY, ""),
-        ACL("acl", TEXT_ARRAY, ""),
-        ACL_MEMBER("acl.member", TEXT_ARRAY, ""),
-        ACL_PERMISSIONS("acl.permissions", TEXT_ARRAY, ""),
-//        ACL_USER_ID("acls.userId", TEXT_ARRAY, ""),
-//        ACL_READ("acls.read", BOOLEAN, ""),
-//        ACL_WRITE("acls.write", BOOLEAN, ""),
-//        ACL_EXECUTE("acls.execute", BOOLEAN, ""),
-//        ACL_DELETE("acls.delete", BOOLEAN, ""),
 
         INDEX("index", TEXT_ARRAY, ""),
         INDEX_USER_ID("index.userId", TEXT, ""),
@@ -154,8 +146,6 @@ public interface FileDBAdaptor extends AclDBAdaptor<File, FileAclEntry> {
 
     long getStudyIdByFileId(long fileId) throws CatalogDBException;
 
-    List<Long> getStudyIdsByFileIds(String fileIds) throws CatalogDBException;
-
     /***
      * Inserts the passed file in the database.
      *
@@ -220,105 +210,13 @@ public interface FileDBAdaptor extends AclDBAdaptor<File, FileAclEntry> {
      */
     QueryResult<Long> extractSampleFromFiles(Query query, List<Long> sampleIds) throws CatalogDBException;
 
-    /*
-     * ACL methods
-     * ***************************
-     */
-
-    /***
-     * Retrieves the AclEntries of the files and users given.
-     *
-     * @param studyId The id of the study where the files belong to.
-     * @param filePaths The file paths of the files to extract the permissions from.
-     * @param userIds The list of user ids from whom the permissions will be checked.
-     * @return A map of files containing a map of user - AclEntries.
-     * @throws CatalogDBException when the study does not exist.
-     */
-    QueryResult<Map<String, Map<String, FileAclEntry>>> getAcls(long studyId, List<String> filePaths, List<String> userIds)
-            throws CatalogDBException;
-
-    default QueryResult<FileAclEntry> getAcl(long fileId, String member) throws CatalogDBException {
-        return getAcl(fileId, Arrays.asList(member));
-    }
-
-    @Deprecated
-    enum FileFilterOption implements AbstractDBAdaptor.FilterOption {
-        studyId(Type.NUMERICAL, ""),
-        directory(Type.TEXT, ""),
-
-        id(Type.NUMERICAL, ""),
-        name(Type.TEXT, ""),
-        type(Type.TEXT, ""),
-        format(Type.TEXT, ""),
-        bioformat(Type.TEXT, ""),
-        uri(Type.TEXT, ""),
-        path(Type.TEXT, ""),
-        ownerId(Type.TEXT, ""),
-        creationDate(Type.TEXT, ""),
-        modificationDate(Type.TEXT, ""),
-        description(Type.TEXT, ""),
-        status(Type.TEXT, ""),
-        size(Type.NUMERICAL, ""),
-        experimentId(Type.NUMERICAL, ""),
-        sampleIds(Type.NUMERICAL, ""),
-        jobId(Type.NUMERICAL, ""),
-        acl(Type.TEXT, ""),
-        bacl("acl", Type.BOOLEAN, ""),
-        index("index", Type.TEXT, ""),
-
-        stats(Type.TEXT, ""),
-        nstats("stats", Type.NUMERICAL, ""),
-
-        attributes(Type.TEXT, "Format: <key><operation><stringValue> where <operation> is [<|<=|>|>=|==|!=|~|!~]"),
-        nattributes("attributes", Type.NUMERICAL, "Format: <key><operation><numericalValue> where <operation> is [<|<=|>|>=|==|!=|~|!~]"),
-        battributes("attributes", Type.BOOLEAN, "Format: <key><operation><true|false> where <operation> is [==|!=]"),
-
-        @Deprecated maxSize(Type.NUMERICAL, ""),
-        @Deprecated minSize(Type.NUMERICAL, ""),
-        @Deprecated startDate(Type.TEXT, ""),
-        @Deprecated endDate(Type.TEXT, ""),
-        @Deprecated like(Type.TEXT, ""),
-        @Deprecated startsWith(Type.TEXT, "");
-
-        private final String _key;
-        private final String _description;
-        private final Type _type;
-
-        FileFilterOption(Type type, String description) {
-            this._key = name();
-            this._description = description;
-            this._type = type;
-        }
-
-        FileFilterOption(String key, Type type, String description) {
-            this._key = key;
-            this._description = description;
-            this._type = type;
-        }
-
-        @Override
-        public String getDescription() {
-            return _description;
-        }
-
-        @Override
-        public Type getType() {
-            return _type;
-        }
-
-        @Override
-        public String getKey() {
-            return _key;
-        }
-    }
-
     /**
-     * Remove all the Acls defined for the member in the resource.
+     * Add the samples to the array of samples in the file entry.
      *
-     * @param studyId study id where the Acls will be removed from.
-     * @param member member from whom the Acls will be removed.
-     * @throws CatalogDBException if any problem occurs during the removal.
+     * @param fileId file id corresponding to the file being updated.
+     * @param samples List of samples to be added to the array.
+     * @throws CatalogDBException CatalogDBException.
      */
-    void removeAclsFromStudy(long studyId, String member) throws CatalogDBException;
+    void addSamplesToFile(long fileId, List<Sample> samples) throws CatalogDBException;
 
 }

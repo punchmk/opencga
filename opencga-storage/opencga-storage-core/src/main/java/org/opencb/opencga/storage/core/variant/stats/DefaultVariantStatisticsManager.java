@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,21 +27,22 @@ import org.opencb.biodata.models.variant.Variant;
 import org.opencb.biodata.models.variant.stats.VariantSourceStats;
 import org.opencb.biodata.models.variant.stats.VariantStats;
 import org.opencb.biodata.tools.variant.stats.VariantAggregatedStatsCalculator;
+import org.opencb.commons.ProgressLogger;
 import org.opencb.commons.datastore.core.Query;
 import org.opencb.commons.datastore.core.QueryOptions;
 import org.opencb.commons.io.DataReader;
 import org.opencb.commons.run.ParallelTaskRunner;
-import org.opencb.opencga.core.common.ProgressLogger;
 import org.opencb.opencga.core.common.UriUtils;
 import org.opencb.opencga.storage.core.exceptions.StorageEngineException;
+import org.opencb.opencga.storage.core.io.json.JsonDataReader;
 import org.opencb.opencga.storage.core.io.plain.StringDataWriter;
 import org.opencb.opencga.storage.core.metadata.StudyConfiguration;
 import org.opencb.opencga.storage.core.metadata.StudyConfigurationManager;
 import org.opencb.opencga.storage.core.variant.adaptors.VariantDBAdaptor;
 import org.opencb.opencga.storage.core.variant.adaptors.VariantField;
+import org.opencb.opencga.storage.core.variant.adaptors.VariantQueryParam;
 import org.opencb.opencga.storage.core.variant.io.db.VariantDBReader;
 import org.opencb.opencga.storage.core.variant.io.db.VariantStatsDBWriter;
-import org.opencb.opencga.storage.core.io.json.JsonDataReader;
 import org.opencb.opencga.storage.core.variant.io.json.mixin.GenericRecordAvroJsonMixin;
 import org.opencb.opencga.storage.core.variant.io.json.mixin.VariantStatsJsonMixin;
 import org.slf4j.Logger;
@@ -59,8 +60,10 @@ import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
 import static org.opencb.biodata.models.variant.VariantSource.Aggregation.isAggregated;
-import static org.opencb.opencga.storage.core.variant.VariantStoragePipeline.checkStudyConfiguration;
+import static org.opencb.opencga.storage.core.metadata.StudyConfigurationManager.checkStudyConfiguration;
 import static org.opencb.opencga.storage.core.variant.VariantStorageEngine.Options;
+import static org.opencb.opencga.storage.core.variant.adaptors.VariantQueryUtils.AND;
+import static org.opencb.opencga.storage.core.variant.adaptors.VariantQueryUtils.NOT;
 
 /**
  * Created by jmmut on 12/02/15.
@@ -207,21 +210,22 @@ public class DefaultVariantStatisticsManager implements VariantStatisticsManager
 
 
         // reader, tasks and writer
-        Query readerQuery = new Query(VariantDBAdaptor.VariantQueryParams.STUDIES.key(), studyConfiguration.getStudyId())
-                .append(VariantDBAdaptor.VariantQueryParams.RETURNED_STUDIES.key(), studyConfiguration.getStudyId());
+        Query readerQuery = new Query(VariantQueryParam.STUDIES.key(), studyConfiguration.getStudyId())
+                .append(VariantQueryParam.RETURNED_STUDIES.key(), studyConfiguration.getStudyId());
         if (options.containsKey(Options.FILE_ID.key())) {
-            readerQuery.append(VariantDBAdaptor.VariantQueryParams.FILES.key(), options.get(Options.FILE_ID.key()));
+            readerQuery.append(VariantQueryParam.FILES.key(), options.get(Options.FILE_ID.key()));
         }
-        if (options.containsKey(VariantDBAdaptor.VariantQueryParams.REGION.key())) {
-            Object region = options.get(VariantDBAdaptor.VariantQueryParams.REGION.key());
-            readerQuery.put(VariantDBAdaptor.VariantQueryParams.REGION.key(), region);
+        if (options.containsKey(VariantQueryParam.REGION.key())) {
+            Object region = options.get(VariantQueryParam.REGION.key());
+            readerQuery.put(VariantQueryParam.REGION.key(), region);
         }
         if (updateStats) {
             //Get all variants that not contain any of the required cohorts
-            readerQuery.append(VariantDBAdaptor.VariantQueryParams.COHORTS.key(),
-                    cohorts.keySet().stream().map((cohort) -> "!" + studyConfiguration.getStudyName() + ":" + cohort).collect(Collectors
-                            .joining(";")));
+            readerQuery.append(VariantQueryParam.COHORTS.key(),
+                    cohorts.keySet().stream().map((cohort) -> NOT + studyConfiguration.getStudyName() + ":" + cohort).collect(Collectors
+                            .joining(AND)));
         }
+        readerQuery.append(VariantQueryParam.UNKNOWN_GENOTYPE.key(), ".");
         logger.info("ReaderQuery: " + readerQuery.toJson());
         QueryOptions readerOptions = new QueryOptions(QueryOptions.SORT, true)
                 .append(QueryOptions.EXCLUDE, VariantField.ANNOTATION);

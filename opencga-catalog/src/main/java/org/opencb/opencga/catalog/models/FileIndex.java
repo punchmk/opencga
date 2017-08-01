@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 
 package org.opencb.opencga.catalog.models;
 
-import java.util.Collections;
 import java.util.Map;
 
 /**
@@ -39,7 +38,6 @@ public class FileIndex {
 
 
     public FileIndex() {
-        this(null, null, new IndexStatus(), -1, Collections.emptyMap());
     }
 
     public FileIndex(String userId, String creationDate, IndexStatus status, long jobId, Map<String, Object> attributes) {

@@ -1,3 +1,19 @@
+/*
+ * Copyright 2015-2017 OpenCB
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.opencb.opencga.app.cli.main.io;
 
 import org.apache.commons.lang3.StringUtils;
@@ -5,11 +21,11 @@ import org.opencb.commons.datastore.core.QueryResponse;
 import org.opencb.commons.datastore.core.QueryResult;
 import org.opencb.opencga.catalog.models.*;
 import org.opencb.opencga.catalog.models.acls.permissions.AbstractAclEntry;
-import org.opencb.opencga.catalog.models.acls.permissions.StudyAclEntry;
 import org.opencb.opencga.core.common.TimeUtils;
 
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -31,7 +47,12 @@ public class TextOutputWriter extends AbstractOutputWriter {
         }
 
         if (queryResponse.getResponse().size() == 0 || ((QueryResult) queryResponse.getResponse().get(0)).getNumResults() == 0) {
-            ps.print("No results found for the query.");
+            if (queryResponse.first().getNumTotalResults() > 0) {
+                // count
+                ps.println(queryResponse.first().getNumTotalResults());
+            } else {
+                ps.println("No results found for the query.");
+            }
             return;
         }
 
@@ -62,6 +83,9 @@ public class TextOutputWriter extends AbstractOutputWriter {
                 break;
             case "Individual":
                 printIndividual(queryResponse.getResponse());
+                break;
+            case "Family":
+                printFamily(queryResponse.getResponse());
                 break;
             case "Job":
                 printJob(queryResponse.getResponse());
@@ -134,23 +158,16 @@ public class TextOutputWriter extends AbstractOutputWriter {
                             for (Study study : project.getStudies()) {
                                 sb.append(String.format("    - %s\t%s\t%s\t%s\t%d\t%s\t%d\n", study.getAlias(), study.getName(),
                                         study.getType(), study.getDescription(), study.getId(),
-                                        StringUtils.join(study.getGroups().stream().map(Group::getName).collect(Collectors.toList()), ", "),
+                                        study.getGroups() == null ? ""
+                                                : study.getGroups().stream().map(Group::getName).collect(Collectors.joining(",")),
                                         study.getSize()));
 
-                                if (study.getGroups().size() > 0) {
+                                if (study.getGroups() != null && study.getGroups().size() > 0) {
                                     sb.append("       Groups:\n");
                                     for (Group group : study.getGroups()) {
                                         printGroup(group, sb, "        + ");
                                     }
                                 }
-
-                                if (study.getAcl().size() > 0) {
-                                    sb.append("       Acl:\n");
-                                    for (StudyAclEntry studyAclEntry : study.getAcl()) {
-                                        printACL(studyAclEntry, sb, "        + ");
-                                    }
-                                }
-
                             }
                         }
                     }
@@ -231,11 +248,15 @@ public class TextOutputWriter extends AbstractOutputWriter {
     private void printFiles(List<File> files, StringBuilder sb, String format) {
         // # name	type	format	bioformat	description	path	id	status	size	index status	related files   samples
         for (File file : files) {
+            String indexStatus = "NA";
+            if (file.getIndex() != null && file.getIndex().getStatus() != null && file.getIndex().getStatus().getName() != null) {
+                indexStatus = file.getIndex().getStatus().getName();
+            }
             sb.append(String.format("%s%s\t%s\t%s\t%s\t%s\t%s\t%s\t%d\t%s\t%d\t%s\t%s\t%s\n", format, file.getName(), file.getType(),
                     file.getFormat(), file.getBioformat(), file.getDescription(), file.getPath(), file.getUri(), file.getId(),
-                    file.getStatus().getName(), file.getSize(), file.getIndex() != null ? file.getIndex().getStatus().getName() : "NA",
+                    file.getStatus().getName(), file.getSize(), indexStatus,
                     StringUtils.join(file.getRelatedFiles().stream().map(File.RelatedFile::getFileId).collect(Collectors.toList()), ", "),
-                    StringUtils.join(file.getSampleIds().stream().collect(Collectors.toList()), ", ")));
+                    StringUtils.join(file.getSamples().stream().map(Sample::getId).collect(Collectors.toList()), ", ")));
         }
     }
 
@@ -322,6 +343,38 @@ public class TextOutputWriter extends AbstractOutputWriter {
         ps.println(sb.toString());
     }
 
+    private void printFamily(List<QueryResult<Family>> queryResultList) {
+        StringBuilder sb = new StringBuilder();
+        for (QueryResult<Family> queryResult : queryResultList) {
+            // Write header
+            if (writerConfiguration.isHeader()) {
+                sb.append("#NAME\tID\tMOTHER\tFATHER\tPARENTAL_CONSANGUINITY\tCHILDREN\tSTATUS\tCREATION_DATE\n");
+            }
+
+            for (Family family : queryResult.getResult()) {
+                String mother = (family.getMother() != null && StringUtils.isNotEmpty(family.getMother().getName()))
+                        ? family.getMother().getName() + "(" + family.getMother().getId() + ")"
+                        : "NA";
+                String father = (family.getFather() != null && StringUtils.isNotEmpty(family.getFather().getName()))
+                        ? family.getFather().getName() + "(" + family.getFather().getId() + ")"
+                        : "NA";
+                String children = family.getChildren() != null
+                        ? StringUtils.join(
+                                family.getChildren().stream()
+                                    .filter(Objects::nonNull)
+                                    .filter(individual -> StringUtils.isNotEmpty(individual.getName()))
+                                    .map(individual -> individual.getName() + "(" + individual.getId() + ")")
+                                    .collect(Collectors.toList()), ", ")
+                        : "NA";
+                sb.append(String.format("%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\n",
+                        family.getName(), family.getId(), mother, father, family.isParentalConsanguinity() ? "true" : "false", children,
+                        family.getStatus().getName(), family.getCreationDate()));
+            }
+        }
+
+        ps.println(sb.toString());
+    }
+
     private void printJob(List<QueryResult<Job>> queryResultList) {
         StringBuilder sb = new StringBuilder();
         for (QueryResult<Job> queryResult : queryResultList) {
@@ -335,7 +388,7 @@ public class TextOutputWriter extends AbstractOutputWriter {
                 sb.append(String.format("%s\t%d\t%s\t%s\t%s\t%s\t%s\t%d\t%s\t%s\t%s\t%d\n",
                         job.getName(), job.getId(), job.getType(), job.getToolName(), job.getCreationDate(), job.getExecutable(),
                         job.getExecution(), job.getVisits(), job.getStatus().getName(), StringUtils.join(job.getInput(), ", "),
-                        StringUtils.join(job.getOutput(), ", "), job.getOutDirId()));
+                        StringUtils.join(job.getOutput(), ", "), job.getOutDir().getId()));
             }
         }
 
@@ -398,7 +451,7 @@ public class TextOutputWriter extends AbstractOutputWriter {
                     indent.isEmpty() ? "" : indent + (iterator.hasNext() ? "├──" : "└──"),
                     file.getType() == File.Type.FILE ? file.getName() : file.getName() + "/",
                     file.getId(),
-                    file.getStatus().getName(),
+                    file.getStatus() != null ? file.getStatus().getName() : "",
                     humanReadableByteCount(file.getSize(), false)));
 
             if (file.getType() == File.Type.DIRECTORY) {

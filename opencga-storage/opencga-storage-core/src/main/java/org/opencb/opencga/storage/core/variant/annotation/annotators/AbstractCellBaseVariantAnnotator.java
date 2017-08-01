@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,6 +39,7 @@ public abstract class AbstractCellBaseVariantAnnotator extends VariantAnnotator 
     public static final String ANNOTATOR_CELLBASE_USE_CACHE = "annotator.cellbase.use_cache";
     public static final String ANNOTATOR_CELLBASE_INCLUDE = "annotator.cellbase.include";
     public static final String ANNOTATOR_CELLBASE_EXCLUDE = "annotator.cellbase.exclude";
+    public static final int CELLBASE_VARIANT_THRESHOLD = 5000;
 
     protected static Logger logger = LoggerFactory.getLogger(AbstractCellBaseVariantAnnotator.class);
     protected final String species;
@@ -96,7 +97,8 @@ public abstract class AbstractCellBaseVariantAnnotator extends VariantAnnotator 
         List<Variant> nonStructuralVariants = new ArrayList<>(variants.size());
         for (Variant variant : variants) {
             // If Variant is SV some work is needed
-            if (variant.getAlternate().length() + variant.getReference().length() > Variant.SV_THRESHOLD * 2) { // TODO: Manage SV variants
+            // TODO:Manage larger SV variants
+            if (variant.getAlternate().length() + variant.getReference().length() > CELLBASE_VARIANT_THRESHOLD) {
 //                logger.info("Skip variant! {}", genomicVariant);
                 logger.info("Skip variant! {}", variant.getChromosome() + ":" + variant.getStart() + ":"
                         + (variant.getReference().length() > 10
@@ -116,8 +118,10 @@ public abstract class AbstractCellBaseVariantAnnotator extends VariantAnnotator 
 
     protected List<VariantAnnotation> getVariantAnnotationList(List<Variant> variants, List<QueryResult<VariantAnnotation>> queryResults) {
         List<VariantAnnotation> variantAnnotationList = new ArrayList<>(variants.size());
-        for (QueryResult<VariantAnnotation> queryResult : queryResults) {
-            variantAnnotationList.addAll(queryResult.getResult());
+        if (queryResults != null) {
+            for (QueryResult<VariantAnnotation> queryResult : queryResults) {
+                variantAnnotationList.addAll(queryResult.getResult());
+            }
         }
         return variantAnnotationList;
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,10 +35,14 @@ import org.opencb.biodata.models.feature.Genotype;
 import org.opencb.biodata.models.variant.VariantSource;
 import org.opencb.biodata.models.variant.stats.VariantStats;
 import org.opencb.commons.datastore.core.*;
-import org.opencb.opencga.catalog.config.Configuration;
+import org.opencb.opencga.catalog.exceptions.CatalogAuthenticationException;
+import org.opencb.opencga.catalog.exceptions.CatalogAuthorizationException;
 import org.opencb.opencga.catalog.exceptions.CatalogException;
+import org.opencb.opencga.catalog.managers.AbstractManager;
 import org.opencb.opencga.catalog.managers.CatalogManager;
+import org.opencb.opencga.catalog.models.acls.AclParams;
 import org.opencb.opencga.core.common.Config;
+import org.opencb.opencga.core.config.Configuration;
 import org.opencb.opencga.core.exception.VersionException;
 import org.opencb.opencga.storage.core.StorageEngineFactory;
 import org.opencb.opencga.storage.core.alignment.json.AlignmentDifferenceJsonMixin;
@@ -73,34 +77,23 @@ public class OpenCGAWSServer {
     @PathParam("version")
     @ApiParam(name = "version", value = "OpenCGA major version", allowableValues = "v1", defaultValue = "v1")
     protected String version;
-
-    //    @DefaultValue("")
-//    @QueryParam("exclude")
-//    @ApiParam(name = "exclude", value = "Fields excluded in response. Whole JSON path.")
     protected String exclude;
-
-    //    @DefaultValue("")
-//    @QueryParam("include")
-//    @ApiParam(name = "include", value = "Only fields included in response. Whole JSON path.")
     protected String include;
-
-    //    @DefaultValue("-1")
-//    @QueryParam("limit")
-//    @ApiParam(name = "limit", value = "Maximum number of documents to be returned.")
     protected int limit;
-
-    //    @DefaultValue("0")
-//    @QueryParam("skip")
-//    @ApiParam(name = "skip", value = "Number of documents to be skipped when querying for data.")
     protected long skip;
-
     protected boolean count;
     protected boolean lazy;
+    protected String sessionId;
 
     @DefaultValue("")
     @QueryParam("sid")
-    @ApiParam(value = "Session Id")
-    protected String sessionId;
+    @ApiParam("Session id")
+    protected String dummySessionId;
+
+    @HeaderParam("Authorization")
+    @DefaultValue("Bearer ")
+    @ApiParam("JWT Authentication token")
+    protected String authentication;
 
     protected UriInfo uriInfo;
     protected HttpServletRequest httpServletRequest;
@@ -117,10 +110,6 @@ public class OpenCGAWSServer {
     protected static ObjectMapper jsonObjectMapper;
 
     protected static Logger logger; // = LoggerFactory.getLogger(this.getClass());
-
-//    @DefaultValue("true")
-//    @QueryParam("metadata")
-//    protected boolean metadata;
 
 
     protected static AtomicBoolean initialized;
@@ -155,11 +144,12 @@ public class OpenCGAWSServer {
     }
 
 
-    public OpenCGAWSServer(@Context UriInfo uriInfo, @Context HttpServletRequest httpServletRequest) throws IOException, VersionException {
-        this(uriInfo.getPathParameters().getFirst("version"), uriInfo, httpServletRequest);
+    public OpenCGAWSServer(@Context UriInfo uriInfo, @Context HttpServletRequest httpServletRequest, @Context HttpHeaders httpHeaders)
+            throws IOException, VersionException {
+        this(uriInfo.getPathParameters().getFirst("version"), uriInfo, httpServletRequest, httpHeaders);
     }
 
-    public OpenCGAWSServer(@PathParam("version") String version, @Context UriInfo uriInfo, @Context HttpServletRequest httpServletRequest)
+    public OpenCGAWSServer(@PathParam("version") String version, @Context UriInfo uriInfo, @Context HttpServletRequest httpServletRequest, @Context HttpHeaders httpHeaders)
             throws IOException, VersionException {
         this.version = version;
         this.uriInfo = uriInfo;
@@ -172,11 +162,24 @@ public class OpenCGAWSServer {
             init();
         }
 
-        query = new Query();
-        queryOptions = new QueryOptions();
+        if (catalogManager == null) {
+            throw new IllegalStateException("OpenCGA was not properly initialized. Please, check if the configuration files are reachable "
+                    + "or properly defined.");
+        }
+
+        try {
+            verifyHeaders(httpHeaders);
+        } catch (CatalogAuthenticationException e) {
+            throw new IllegalStateException(e);
+        }
+
+        query = new
+        Query();
+
+        queryOptions = new
+        QueryOptions();
 
         parseParams();
-
         // take the time for calculating the whole duration of the call
         startTime = System.currentTimeMillis();
     }
@@ -226,6 +229,7 @@ public class OpenCGAWSServer {
     /**
      * This method loads OpenCGA configuration files and initialize CatalogManager and StorageManagerFactory.
      * This must be only executed once.
+     *
      * @param configDir directory containing the configuration files
      */
     private void initOpenCGAObjects(java.nio.file.Path configDir) {
@@ -269,57 +273,6 @@ public class OpenCGAWSServer {
         }
     }
 
-//
-//    /**
-//     * Builds the query and the queryOptions based on the query parameters.
-//     *
-//     * @param params Map of parameters.
-//     * @param getParam Method that returns the QueryParams object based on the key.
-//     * @param query Query where parameters parsing the getParam function will be inserted.
-//     * @param queryOptions QueryOptions where parameters not parsing the getParam function will be inserted.
-//     */
-//    @Deprecated
-//    protected static void parseQueryParams(Map<String, List<String>> params,
-//                                           Function<String, org.opencb.commons.datastore.core.QueryParam> getParam,
-//                                           ObjectMap query, QueryOptions queryOptions) {
-//        for (Map.Entry<String, List<String>> entry : params.entrySet()) {
-//            String param = entry.getKey();
-//            int indexOf = param.indexOf('.');
-//            param = indexOf > 0 ? param.substring(0, indexOf) : param;
-//
-//            if (getParam.apply(param) != null) {
-//                query.put(entry.getKey(), entry.getValue().get(0));
-//            } else {
-//                queryOptions.add(param, entry.getValue().get(0));
-//            }
-//
-//            // Exceptions
-//            if (param.equalsIgnoreCase("status")) {
-//                query.put("status.name", entry.getValue().get(0));
-//                query.remove("status");
-//                queryOptions.remove("status");
-//            }
-//
-//            if (param.equalsIgnoreCase("jobId")) {
-//                query.put("job.id", entry.getValue().get(0));
-//                query.remove("jobId");
-//                queryOptions.remove("jobId");
-//            }
-//
-//            if (param.equalsIgnoreCase("individualId")) {
-//                query.put("individual.id", entry.getValue().get(0));
-//                query.remove("individualId");
-//                queryOptions.remove("individualId");
-//            }
-//
-//            if (param.equalsIgnoreCase("sid")) {
-//                query.remove("sid");
-//                queryOptions.remove("sid");
-//            }
-//        }
-//        logger.debug("parseQueryParams: Query {}, queryOptions {}", query.safeToString(), queryOptions.safeToString());
-//    }
-
     private void parseParams() throws VersionException {
         // If by any reason 'version' is null we try to read it from the URI path, if not present an Exception is thrown
         if (version == null) {
@@ -345,7 +298,7 @@ public class OpenCGAWSServer {
 
         // Add all the others QueryParams from the URL
         for (Map.Entry<String, List<String>> entry : multivaluedMap.entrySet()) {
-            String value =  entry.getValue().get(0);
+            String value = entry.getValue().get(0);
             switch (entry.getKey()) {
                 case QueryOptions.INCLUDE:
                 case QueryOptions.EXCLUDE:
@@ -376,6 +329,11 @@ public class OpenCGAWSServer {
                     lazy = Boolean.parseBoolean(value);
                     queryOptions.put(entry.getKey(), lazy);
                     break;
+                case QueryOptions.FACET:
+                case QueryOptions.FACET_RANGE:
+                case QueryOptions.FACET_INTERSECTION:
+                    queryOptions.put(entry.getKey(), value);
+                    break;
                 default:
                     // Query
                     query.put(entry.getKey(), value);
@@ -392,6 +350,20 @@ public class OpenCGAWSServer {
             query.remove("status");
         }
 
+        if (query.containsKey("variableSet")) {
+            query.put("variableSetId", query.get("variableSet"));
+            query.remove("variableSet");
+        }
+        if (query.containsKey("variableSetId")) {
+            try {
+                AbstractManager.MyResourceId resource = catalogManager.getStudyManager().getVariableSetId(query.getString
+                        ("variableSetId"), query.getString("study"), sessionId);
+                query.put("variableSetId", resource.getResourceId());
+            } catch (CatalogException e) {
+                logger.warn("VariableSetId parameter found, but proper id could not be found: {}", e.getMessage(), e);
+            }
+        }
+
         try {
             logger.info("URL: {}, query = {}, queryOptions = {}", uriInfo.getAbsolutePath().toString(),
                     jsonObjectWriter.writeValueAsString(query), jsonObjectWriter.writeValueAsString(queryOptions));
@@ -401,7 +373,7 @@ public class OpenCGAWSServer {
     }
 
     private void parseIncludeExclude(MultivaluedMap<String, String> multivaluedMap, String key, String value) {
-        if(value != null && !value.isEmpty()) {
+        if (value != null && !value.isEmpty()) {
             queryOptions.put(key, new LinkedList<>(Splitter.on(",").splitToList(value)));
         } else {
             queryOptions.put(key, (multivaluedMap.get(key) != null)
@@ -411,9 +383,9 @@ public class OpenCGAWSServer {
     }
 
 
-    protected void addParamIfNotNull(Map<String, String> params, String key, String value) {
+    protected void addParamIfNotNull(Map<String, String> params, String key, Object value) {
         if (key != null && value != null) {
-            params.put(key, value);
+            params.put(key, value.toString());
         }
     }
 
@@ -423,12 +395,45 @@ public class OpenCGAWSServer {
         }
     }
 
+    // Temporal method used by deprecated methods. This will be removed at some point.
+    protected AclParams getAclParams(
+            @ApiParam(value = "Comma separated list of permissions to add", required = false) @QueryParam("add") String addPermissions,
+            @ApiParam(value = "Comma separated list of permissions to remove", required = false) @QueryParam("remove") String removePermissions,
+            @ApiParam(value = "Comma separated list of permissions to set", required = false) @QueryParam("set") String setPermissions)
+            throws CatalogException {
+        int count = 0;
+        count += StringUtils.isNotEmpty(setPermissions) ? 1 : 0;
+        count += StringUtils.isNotEmpty(addPermissions) ? 1 : 0;
+        count += StringUtils.isNotEmpty(removePermissions) ? 1 : 0;
+        if (count > 1) {
+            throw new CatalogException("Only one of add, remove or set parameters are allowed.");
+        } else if (count == 0) {
+            throw new CatalogException("One of add, remove or set parameters is expected.");
+        }
+
+        String permissions = null;
+        AclParams.Action action = null;
+        if (StringUtils.isNotEmpty(addPermissions)) {
+            permissions = addPermissions;
+            action = AclParams.Action.ADD;
+        }
+        if (StringUtils.isNotEmpty(setPermissions)) {
+            permissions = setPermissions;
+            action = AclParams.Action.SET;
+        }
+        if (StringUtils.isNotEmpty(removePermissions)) {
+            permissions = removePermissions;
+            action = AclParams.Action.REMOVE;
+        }
+        return new AclParams(permissions, action);
+    }
+
     @Deprecated
     @GET
     @Path("/help")
-    @ApiOperation(value = "Help", position = 1)
+    @ApiOperation(value = "Help", hidden = true, position = 1)
     public Response help() {
-        return createOkResponse("No help available");
+        return createErrorResponse("help", "No help available");
     }
 
     protected Response createErrorResponse(Exception e) {
@@ -451,9 +456,14 @@ public class OpenCGAWSServer {
         result.setErrorMsg("DEPRECATED: " + e.toString());
         queryResponse.setResponse(Arrays.asList(result));
 
-        return Response.fromResponse(createJsonResponse(queryResponse))
-                .status(Response.Status.INTERNAL_SERVER_ERROR).build();
-//        return createOkResponse(result);
+        Response.Status errorStatus = Response.Status.INTERNAL_SERVER_ERROR;
+        if (e instanceof CatalogAuthorizationException) {
+            errorStatus = Response.Status.FORBIDDEN;
+        } else if (e instanceof CatalogAuthenticationException) {
+            errorStatus = Response.Status.UNAUTHORIZED;
+        }
+
+        return Response.fromResponse(createJsonResponse(queryResponse)).status(errorStatus).build();
     }
 
 //    protected Response createErrorResponse(String o) {
@@ -520,10 +530,26 @@ public class OpenCGAWSServer {
     protected Response buildResponse(Response.ResponseBuilder responseBuilder) {
         return responseBuilder
                 .header("Access-Control-Allow-Origin", "*")
-                .header("Access-Control-Allow-Headers", "x-requested-with, content-type")
+                .header("Access-Control-Allow-Headers", "x-requested-with, content-type, authorization")
                 .header("Access-Control-Allow-Credentials", "true")
                 .header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
                 .build();
     }
 
+    private void verifyHeaders(HttpHeaders httpHeaders) throws CatalogAuthenticationException {
+
+        List<String> authorization = httpHeaders.getRequestHeader("Authorization");
+
+        if (authorization != null && authorization.get(0).length() > 7) {
+            String token = authorization.get(0);
+            if (!token.startsWith("Bearer ")) {
+                throw new CatalogAuthenticationException("Authorization header must start with Bearer JWToken");
+            }
+            this.sessionId = token.substring("Bearer".length()).trim();
+        }
+
+        if (StringUtils.isEmpty(this.sessionId)) {
+            this.sessionId = this.params.getFirst("sid");
+        }
+    }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,9 @@
 package org.opencb.opencga.app.cli.main.executors.catalog;
 
 
+import org.apache.commons.lang3.StringUtils;
 import org.opencb.commons.datastore.core.ObjectMap;
+import org.opencb.commons.datastore.core.Query;
 import org.opencb.commons.datastore.core.QueryOptions;
 import org.opencb.commons.datastore.core.QueryResponse;
 import org.opencb.opencga.app.cli.main.executors.OpencgaCommandExecutor;
@@ -53,6 +55,9 @@ public class ProjectCommandExecutor extends OpencgaCommandExecutor {
             case "create":
                 queryResponse = create();
                 break;
+            case "search":
+                queryResponse = search();
+                break;
             case "info":
                 queryResponse = info();
                 break;
@@ -80,21 +85,16 @@ public class ProjectCommandExecutor extends OpencgaCommandExecutor {
         // First we populate the organism information using the client configuration
         params.putIfNotEmpty(ProjectDBAdaptor.QueryParams.NAME.key(), projectsCommandOptions.createCommandOptions.name);
         params.putIfNotEmpty(ProjectDBAdaptor.QueryParams.ALIAS.key(), projectsCommandOptions.createCommandOptions.alias);
-        params.putIfNotEmpty(ProjectDBAdaptor.QueryParams.ORGANISM_SCIENTIFIC_NAME.key(),
-                clientConfiguration.getOrganism().getScientificName());
-        params.putIfNotEmpty(ProjectDBAdaptor.QueryParams.ORGANISM_COMMON_NAME.key(), clientConfiguration.getOrganism().getCommonName());
-        params.putIfNotEmpty(ProjectDBAdaptor.QueryParams.ORGANISM_TAXONOMY_CODE.key(),
-                Integer.toString(clientConfiguration.getOrganism().getTaxonomyCode()));
-        params.putIfNotEmpty(ProjectDBAdaptor.QueryParams.ORGANISM_ASSEMBLY.key(), clientConfiguration.getOrganism().getAssembly());
 
-        // We overwrite the organism information with what the user has given
-        params.putIfNotEmpty(ProjectDBAdaptor.QueryParams.ORGANISM_SCIENTIFIC_NAME.key(),
-                projectsCommandOptions.createCommandOptions.scientificName);
-        params.putIfNotEmpty(ProjectDBAdaptor.QueryParams.ORGANISM_COMMON_NAME.key(),
-                projectsCommandOptions.createCommandOptions.commonName);
-        params.putIfNotEmpty(ProjectDBAdaptor.QueryParams.ORGANISM_TAXONOMY_CODE.key(),
-                projectsCommandOptions.createCommandOptions.taxonomyCode);
-        params.putIfNotEmpty(ProjectDBAdaptor.QueryParams.ORGANISM_ASSEMBLY.key(), projectsCommandOptions.createCommandOptions.assembly);
+        ProjectCommandOptions.CreateCommandOptions commandOptions = projectsCommandOptions.createCommandOptions;
+        Project.Organism organism = clientConfiguration.getOrganism();
+        organism.setAssembly(StringUtils.isNotEmpty(commandOptions.assembly) ? commandOptions.assembly : organism.getAssembly());
+        organism.setCommonName(StringUtils.isNotEmpty(commandOptions.commonName) ? commandOptions.commonName : organism.getCommonName());
+        organism.setScientificName(StringUtils.isNotEmpty(commandOptions.scientificName)
+                ? commandOptions.scientificName : organism.getScientificName());
+        organism.setTaxonomyCode(StringUtils.isNotEmpty(commandOptions.taxonomyCode)
+                ? Integer.parseInt(commandOptions.taxonomyCode) : organism.getTaxonomyCode());
+        params.put(ProjectDBAdaptor.QueryParams.ORGANISM.key(), organism);
 
         params.putIfNotEmpty(ProjectDBAdaptor.QueryParams.DESCRIPTION.key(), projectsCommandOptions.createCommandOptions.description);
         params.putIfNotEmpty(ProjectDBAdaptor.QueryParams.ORGANIZATION.key(), projectsCommandOptions.createCommandOptions.organization);
@@ -108,8 +108,31 @@ public class ProjectCommandExecutor extends OpencgaCommandExecutor {
         QueryOptions queryOptions = new QueryOptions();
         queryOptions.putIfNotEmpty(QueryOptions.INCLUDE, projectsCommandOptions.infoCommandOptions.dataModelOptions.include);
         queryOptions.putIfNotEmpty(QueryOptions.EXCLUDE, projectsCommandOptions.infoCommandOptions.dataModelOptions.exclude);
-        return openCGAClient.getProjectClient().get(projectsCommandOptions.infoCommandOptions.project, null);
+        return openCGAClient.getProjectClient().get(projectsCommandOptions.infoCommandOptions.project, queryOptions);
     }
+
+    private QueryResponse<Project> search() throws CatalogException, IOException {
+        logger.debug("Search projects");
+
+        ProjectCommandOptions.SearchCommandOptions commandOptions = projectsCommandOptions.searchCommandOptions;
+
+        Query query = new Query();
+        query.putIfNotEmpty("owner", commandOptions.owner);
+        query.putIfNotEmpty(ProjectDBAdaptor.QueryParams.STUDY.key(), commandOptions.study);
+        query.putIfNotEmpty(ProjectDBAdaptor.QueryParams.NAME.key(), commandOptions.name);
+        query.putIfNotEmpty(ProjectDBAdaptor.QueryParams.ALIAS.key(), commandOptions.alias);
+        query.putIfNotEmpty(ProjectDBAdaptor.QueryParams.ORGANIZATION.key(), commandOptions.organization);
+        query.putIfNotEmpty(ProjectDBAdaptor.QueryParams.DESCRIPTION.key(), commandOptions.description);
+        query.putIfNotEmpty(ProjectDBAdaptor.QueryParams.CREATION_DATE.key(), commandOptions.creationDate);
+        query.putIfNotEmpty("status", commandOptions.status);
+        query.putIfNotEmpty(ProjectDBAdaptor.QueryParams.ATTRIBUTES.key(), commandOptions.attributes);
+
+        QueryOptions queryOptions = new QueryOptions();
+        queryOptions.putIfNotEmpty(QueryOptions.INCLUDE, projectsCommandOptions.infoCommandOptions.dataModelOptions.include);
+        queryOptions.putIfNotEmpty(QueryOptions.EXCLUDE, projectsCommandOptions.infoCommandOptions.dataModelOptions.exclude);
+        return openCGAClient.getProjectClient().search(query, queryOptions);
+    }
+
 
     private QueryResponse<Project> update() throws CatalogException, IOException {
         logger.debug("Updating project");

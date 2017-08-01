@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ import org.opencb.commons.datastore.core.*;
 import org.opencb.opencga.catalog.exceptions.CatalogDBException;
 import org.opencb.opencga.catalog.models.Job;
 import org.opencb.opencga.catalog.models.Tool;
-import org.opencb.opencga.catalog.models.acls.permissions.JobAclEntry;
 
 import java.util.HashMap;
 import java.util.List;
@@ -31,7 +30,7 @@ import static org.opencb.commons.datastore.core.QueryParam.Type.*;
 /**
  * @author Jacobo Coll &lt;jacobo167@gmail.com&gt;
  */
-public interface JobDBAdaptor extends AclDBAdaptor<Job, JobAclEntry> {
+public interface JobDBAdaptor extends DBAdaptor<Job> {
 
     default boolean exists(long jobId) throws CatalogDBException {
         return count(new Query(QueryParams.ID.key(), jobId)).first() > 0;
@@ -80,16 +79,6 @@ public interface JobDBAdaptor extends AclDBAdaptor<Job, JobAclEntry> {
     QueryResult<ObjectMap> incJobVisits(long jobId) throws CatalogDBException;
 
     long getStudyId(long jobId) throws CatalogDBException;
-
-    /**
-     * Remove all the Acls defined for the member in the resource.
-     *
-     * @param studyId study id where the Acls will be removed from.
-     * @param member member from whom the Acls will be removed.
-     * @throws CatalogDBException if any problem occurs during the removal.
-     */
-    void removeAclsFromStudy(long studyId, String member) throws CatalogDBException;
-
 
     /**
      * Extract the fileIds given from the jobs matching the query. It will try to take them out from the input and output arrays.
@@ -141,14 +130,15 @@ public interface JobDBAdaptor extends AclDBAdaptor<Job, JobAclEntry> {
         STATUS_MSG("status.msg", TEXT, ""),
         STATUS_DATE("status.date", TEXT, ""),
         SIZE("size", DECIMAL, ""),
-        OUT_DIR_ID("outDirId", INTEGER_ARRAY, ""),
+        RELEASE("release", INTEGER, ""),
+        OUT_DIR("outDir", TEXT_ARRAY, ""),
+        OUT_DIR_ID("outDir.id", INTEGER, ""),
         TMP_OUT_DIR_URI("tmpOutDirUri", TEXT_ARRAY, ""),
-        INPUT("input", INTEGER_ARRAY, ""),
-        OUTPUT("output", INTEGER_ARRAY, ""),
+        INPUT("input", TEXT_ARRAY, ""),
+        OUTPUT("output", TEXT_ARRAY, ""),
+        INPUT_ID("input.id", INTEGER_ARRAY, ""),
+        OUTPUT_ID("output.id", INTEGER_ARRAY, ""),
         TAGS("tags", TEXT_ARRAY, ""),
-        ACL("acl", TEXT_ARRAY, ""),
-        ACL_MEMBER("acl.member", TEXT_ARRAY, ""),
-        ACL_PERMISSIONS("acl.permissions", TEXT_ARRAY, ""),
         ATTRIBUTES("attributes", TEXT, ""), // "Format: <key><operation><stringValue> where <operation> is [<|<=|>|>=|==|!=|~|!~]"
         NATTRIBUTES("nattributes", DECIMAL, ""), // "Format: <key><operation><numericalValue> where <operation> is [<|<=|>|>=|==|!=|~|!~]"
         BATTRIBUTES("battributes", BOOLEAN, ""), // "Format: <key><operation><true|false> where <operation> is [==|!=]"

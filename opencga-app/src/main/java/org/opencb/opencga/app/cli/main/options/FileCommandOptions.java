@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,13 +20,14 @@ import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.Parameters;
 import com.beust.jcommander.ParametersDelegate;
+import org.opencb.opencga.app.cli.GeneralCliOptions.CommonCommandOptions;
+import org.opencb.opencga.app.cli.GeneralCliOptions.DataModelOptions;
 import org.opencb.opencga.app.cli.GeneralCliOptions.NumericOptions;
+import org.opencb.opencga.app.cli.GeneralCliOptions.StudyOption;
 import org.opencb.opencga.app.cli.main.options.commons.AclCommandOptions;
 import org.opencb.opencga.catalog.models.File;
 
 import java.util.List;
-
-import static org.opencb.opencga.app.cli.GeneralCliOptions.*;
 
 /**
  * Created by sgallego on 6/14/16.
@@ -55,18 +56,13 @@ public class FileCommandOptions {
     public GroupByCommandOptions groupByCommandOptions;
 //    public VariantsCommandOptions variantsCommandOptions;
 
-    public AclCommandOptions.AclsCommandOptions aclsCommandOptions;
-    public AclCommandOptions.AclsCreateCommandOptions aclsCreateCommandOptions;
-    public AclCommandOptions.AclsMemberDeleteCommandOptions aclsMemberDeleteCommandOptions;
-    public AclCommandOptions.AclsMemberInfoCommandOptions aclsMemberInfoCommandOptions;
-    public AclCommandOptions.AclsMemberUpdateCommandOptions aclsMemberUpdateCommandOptions;
+    public FileAclCommandOptions.AclsCommandOptions aclsCommandOptions;
+    public FileAclCommandOptions.AclsUpdateCommandOptions aclsUpdateCommandOptions;
 
     public JCommander jCommander;
     public CommonCommandOptions commonCommandOptions;
     public DataModelOptions commonDataModelOptions;
     public NumericOptions commonNumericOptions;
-
-    private AclCommandOptions aclCommandOptions;
 
     public FileCommandOptions(CommonCommandOptions commonCommandOptions, DataModelOptions dataModelOptions, NumericOptions numericOptions,
                               JCommander jCommander) {
@@ -97,12 +93,9 @@ public class FileCommandOptions {
         this.groupByCommandOptions = new GroupByCommandOptions();
 //        this.variantsCommandOptions = new VariantsCommandOptions();
 
-        aclCommandOptions = new AclCommandOptions(commonCommandOptions);
+        FileAclCommandOptions aclCommandOptions = new FileAclCommandOptions(commonCommandOptions);
         this.aclsCommandOptions = aclCommandOptions.getAclsCommandOptions();
-        this.aclsCreateCommandOptions = aclCommandOptions.getAclsCreateCommandOptions();
-        this.aclsMemberDeleteCommandOptions = aclCommandOptions.getAclsMemberDeleteCommandOptions();
-        this.aclsMemberInfoCommandOptions = aclCommandOptions.getAclsMemberInfoCommandOptions();
-        this.aclsMemberUpdateCommandOptions = aclCommandOptions.getAclsMemberUpdateCommandOptions();
+        this.aclsUpdateCommandOptions = aclCommandOptions.getAclsUpdateCommandOptions();
     }
 
     public class BaseFileCommand extends StudyOption {
@@ -244,7 +237,7 @@ public class FileCommandOptions {
         @Parameter(names = {"--size"}, description = "Size.", required = false, arity = 1)
         public String size;
 
-        @Parameter(names = {"--sample-ids"}, description = "Sample ids", required = false, arity = 1)
+        @Parameter(names = {"--samples"}, description = "Comma separated list of sample ids or names", required = false, arity = 1)
         public String samples;
 
         @Parameter(names = {"--job-id"}, description = "Job id", required = false, arity = 1)
@@ -255,6 +248,9 @@ public class FileCommandOptions {
 
         @Parameter(names = {"--nattributes"}, description = "numerical attributes", required = false, arity = 1)
         public String nattributes;
+
+        @Parameter(names = {"--no-lazy"}, description = "Obtain the entire related job and experiment objects", arity = 0)
+        public boolean noLazy;
 
     }
 
@@ -404,7 +400,7 @@ public class FileCommandOptions {
         @Parameter(names = {"--stats"}, description = "Stats", required = false, arity = 1)
         public String stats;
 
-        @Parameter(names = {"--sample-ids"}, description = "sampleIds", required = false, arity = 1)
+        @Parameter(names = {"--samples"}, description = "Comma separated list of sample names or ids", required = false, arity = 1)
         public String sampleIds;
 
         @Parameter(names = {"--job-id"}, description = "Job id", required = false, arity = 1)
@@ -579,7 +575,7 @@ public class FileCommandOptions {
         @Parameter(names = {"--size"}, description = "Filter by size", required = false, arity = 1)
         public String size;
 
-        @Parameter(names = {"--sample-ids"}, description = "Sample ids", required = false, arity = 1)
+        @Parameter(names = {"--samples"}, description = "Comma separated list of sample ids or names", required = false, arity = 1)
         public String sampleIds;
 
         @Parameter(names = {"--job"}, description = "Job id", required = false, arity = 1)
@@ -757,6 +753,33 @@ public class FileCommandOptions {
         @Parameter(names = {"--count"}, description = "Total number of results.", arity = 0)
         public boolean count;
 
+    }
+
+    public class FileAclCommandOptions extends AclCommandOptions {
+
+        private AclsUpdateCommandOptions aclsUpdateCommandOptions;
+
+        public FileAclCommandOptions(CommonCommandOptions commonCommandOptions) {
+            super(commonCommandOptions);
+        }
+
+        @Parameters(commandNames = {"acl-update"}, commandDescription = "Update the permissions set for a member")
+        public class AclsUpdateCommandOptions extends AclCommandOptions.AclsUpdateCommandOptions {
+
+//            @Parameter(names = {"--file"}, description = "Comma separated list of file ids, names or paths", arity = 1)
+//            public String file;
+
+            @Parameter(names = {"--sample"}, description = "Comma separated list of sample ids or names", arity = 1)
+            public String sample;
+        }
+
+        @Override
+        public AclsUpdateCommandOptions getAclsUpdateCommandOptions() {
+            if (this.aclsUpdateCommandOptions == null) {
+                this.aclsUpdateCommandOptions = new AclsUpdateCommandOptions();
+            }
+            return aclsUpdateCommandOptions;
+        }
     }
 
 }

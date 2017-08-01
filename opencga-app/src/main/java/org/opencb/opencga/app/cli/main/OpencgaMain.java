@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -92,6 +92,9 @@ public class OpencgaMain {
                             break;
                         case "panels":
                             commandExecutor = new PanelCommandExecutor(cliOptionsParser.getPanelCommands());
+                            break;
+                        case "families":
+                            commandExecutor = new FamilyCommandExecutor(cliOptionsParser.getFamilyCommands());
                             break;
                         case "tools":
                             commandExecutor = new ToolCommandExecutor(cliOptionsParser.getToolCommands());

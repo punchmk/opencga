@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,6 +42,7 @@ public class AdminCliOptionsParser {
     private AuditCommandOptions auditCommandOptions;
     private ToolsCommandOptions toolsCommandOptions;
     private ServerCommandOptions serverCommandOptions;
+    private AdminCliOptionsParser.MetaCommandOptions metaCommandOptions;
 
 
     public AdminCliOptionsParser() {
@@ -69,7 +70,8 @@ public class AdminCliOptionsParser {
         jCommander.addCommand("users", usersCommandOptions);
         JCommander usersSubCommands = jCommander.getCommands().get("users");
         usersSubCommands.addCommand("create", usersCommandOptions.createUserCommandOptions);
-        usersSubCommands.addCommand("import", usersCommandOptions.importUserCommandOptions);
+        usersSubCommands.addCommand("import", usersCommandOptions.importCommandOptions);
+        usersSubCommands.addCommand("sync", usersCommandOptions.syncCommandOptions);
         usersSubCommands.addCommand("delete", usersCommandOptions.deleteUserCommandOptions);
         usersSubCommands.addCommand("quota", usersCommandOptions.QuotaUserCommandOptions);
         usersSubCommands.addCommand("stats", usersCommandOptions.statsUserCommandOptions);
@@ -93,6 +95,11 @@ public class AdminCliOptionsParser {
         JCommander serverSubCommands = jCommander.getCommands().get("server");
         serverSubCommands.addCommand("rest", serverCommandOptions.restServerCommandOptions);
         serverSubCommands.addCommand("grpc", serverCommandOptions.grpcServerCommandOptions);
+
+        this.metaCommandOptions = new AdminCliOptionsParser.MetaCommandOptions();
+        this.jCommander.addCommand("meta", this.metaCommandOptions);
+        JCommander metaSubCommands = this.jCommander.getCommands().get("meta");
+        metaSubCommands.addCommand("update", this.metaCommandOptions.metaKeyCommandOptions);
     }
 
     public void parse(String[] args) throws ParameterException {
@@ -107,7 +114,7 @@ public class AdminCliOptionsParser {
         String parsedCommand = jCommander.getParsedCommand();
         if (jCommander.getCommands().containsKey(parsedCommand)) {
             String subCommand = jCommander.getCommands().get(parsedCommand).getParsedCommand();
-            return subCommand != null ? subCommand: "";
+            return subCommand != null ? subCommand : "";
         } else {
             return null;
         }
@@ -131,7 +138,7 @@ public class AdminCliOptionsParser {
      */
     public class CommandOptions {
 
-        @Parameter(names = {"-h", "--help"},  description = "This parameter prints this help", help = true)
+        @Parameter(names = {"-h", "--help"}, description = "This parameter prints this help", help = true)
         public boolean help;
 
         public JCommander getSubCommand() {
@@ -142,7 +149,7 @@ public class AdminCliOptionsParser {
             String parsedCommand = jCommander.getParsedCommand();
             if (jCommander.getCommands().containsKey(parsedCommand)) {
                 String subCommand = jCommander.getCommands().get(parsedCommand).getParsedCommand();
-                return subCommand != null ? subCommand: "";
+                return subCommand != null ? subCommand : "";
             } else {
                 return "";
             }
@@ -198,7 +205,8 @@ public class AdminCliOptionsParser {
     public class UsersCommandOptions extends CommandOptions {
 
         CreateUserCommandOptions createUserCommandOptions;
-        ImportUserCommandOptions importUserCommandOptions;
+        ImportCommandOptions importCommandOptions;
+        SyncCommandOptions syncCommandOptions;
         DeleteUserCommandOptions deleteUserCommandOptions;
         StatsUserCommandOptions statsUserCommandOptions;
         QuotaUserCommandOptions QuotaUserCommandOptions;
@@ -207,7 +215,8 @@ public class AdminCliOptionsParser {
 
         public UsersCommandOptions() {
             this.createUserCommandOptions = new CreateUserCommandOptions();
-            this.importUserCommandOptions = new ImportUserCommandOptions();
+            this.importCommandOptions = new ImportCommandOptions();
+            this.syncCommandOptions = new SyncCommandOptions();
             this.deleteUserCommandOptions = new DeleteUserCommandOptions();
             this.statsUserCommandOptions = new StatsUserCommandOptions();
             this.QuotaUserCommandOptions = new QuotaUserCommandOptions();
@@ -226,8 +235,8 @@ public class AdminCliOptionsParser {
         AdminCommonCommandOptions commonOptions = AdminCliOptionsParser.this.commonCommandOptions;
 
         public AuditCommandOptions() {
-            this.queryAuditCommandOptions= new QueryAuditCommandOptions();
-            this.statsAuditCommandOptions= new StatsAuditCommandOptions();
+            this.queryAuditCommandOptions = new QueryAuditCommandOptions();
+            this.statsAuditCommandOptions = new StatsAuditCommandOptions();
         }
     }
 
@@ -268,7 +277,16 @@ public class AdminCliOptionsParser {
         }
     }
 
+    @Parameters( commandNames = {"meta"}, commandDescription = "Manage Meta data")
+    public class MetaCommandOptions extends AdminCliOptionsParser.CommandOptions {
 
+        MetaKeyCommandOptions metaKeyCommandOptions;
+        AdminCommonCommandOptions commonOptions = AdminCliOptionsParser.this.commonCommandOptions;
+
+        public MetaCommandOptions() {
+            this.metaKeyCommandOptions = new MetaKeyCommandOptions();
+        }
+    }
 
     /**
      * Auxiliary class for Database connection.
@@ -315,10 +333,26 @@ public class AdminCliOptionsParser {
 
         @ParametersDelegate
         public AdminCommonCommandOptions commonOptions = AdminCliOptionsParser.this.commonCommandOptions;
+        @Parameter(
+                names = {"--secret-key"},
+                description = "Secret key needed to authenticate through OpenCGA (JWT).",
+                required = true
+        )
 
-//        @Parameter(names = {"--overwrite"}, description = "Reset the database if exists before installing")
-//        public boolean overwrite;
+        public String secretKey;
 
+        @Parameter(
+                names = {"--algorithm"},
+                description = "Algorithm to encrypt JWT session token (HS256)",
+                required = true
+        )
+
+        public String algorithm;
+
+        public InstallCatalogCommandOptions() {
+            super();
+            this.commonOptions = AdminCliOptionsParser.this.commonCommandOptions;
+        }
     }
 
     @Parameters(commandNames = {"delete"}, commandDescription = "Delete the Catalog database")
@@ -394,12 +428,9 @@ public class AdminCliOptionsParser {
     }
 
 
-
     /*
      * AUDIT SUB-COMMANDS
      */
-
-
     @Parameters(commandNames = {"query"}, commandDescription = "Query audit data from Catalog database")
     public class QueryAuditCommandOptions extends CatalogDatabaseCommandOptions {
 
@@ -421,7 +452,6 @@ public class AdminCliOptionsParser {
     /*
      * USER SUB-COMMANDS
      */
-
     @Parameters(commandNames = {"create"}, commandDescription = "Create a new user")
     public class CreateUserCommandOptions extends CatalogDatabaseCommandOptions {
 
@@ -451,32 +481,72 @@ public class AdminCliOptionsParser {
 
     }
 
-    @Parameters(commandNames = {"import"}, commandDescription = "Import users from an authentication origin into catalog")
-    public class ImportUserCommandOptions extends CatalogDatabaseCommandOptions {
+    @Parameters(commandNames = {"import"}, commandDescription = "Import users and/or groups from an authentication origin into Catalog")
+    public class ImportCommandOptions extends CatalogDatabaseCommandOptions {
 
         @ParametersDelegate
         public AdminCommonCommandOptions commonOptions = AdminCliOptionsParser.this.commonCommandOptions;
 
-        @Parameter(names = {"-u", "--users"}, description = "Comma separated list of user ids", required = true, arity = 1)
-        public String users;
+        @Parameter(names = {"-u", "--user"}, description = "Comma separated list of user ids to be imported from the authenticated origin", arity = 1)
+        public String user;
 
-        @Parameter(names = {"-g", "--groups"}, description = "Comma separated list of group ids [PENDING]", arity = 1)
-        public String groups;
+        @Parameter(names = {"-g", "--group"}, description = "Group defined in the authenticated origin from which users will be imported", arity = 1)
+        public String group;
+
+        @Parameter(names = {"-s", "--study"}, description = "Study [[user@]project:]study where the users or group will be associated to."
+                + " Parameter --study-group is needed to perform this action.", arity = 1)
+        public String study;
+
+        @Parameter(names = {"--study-group"}, description = "Group that will be created in catalog containing the list of imported "
+                + "users. Parameter --study is needed to perform this action.", arity = 1)
+        public String studyGroup;
 
         @Parameter(names = {"--auth-origin"}, description = "Authentication id (as defined in the catalog configuration file) of the origin"
                 + " to be used to import users from.", arity = 1, required = true)
         public String authOrigin;
 
         @Parameter(names = {"--type"}, description = "User account type of the users to be imported (guest or full).", arity = 1)
-        public String type = Account.FULL;
+        public String type = Account.GUEST;
+
+        @Parameter(names = {"--expiration-date"}, description = "Expiration date (DD/MM/YYYY). By default, one year starting from the "
+                + "import day", arity = 1)
+        public String expDate;
+    }
+
+    @Parameters(commandNames = {"sync"}, commandDescription = "Sync a group of users from an authentication origin with a group in a study from catalog")
+    public class SyncCommandOptions extends CatalogDatabaseCommandOptions {
+
+        @ParametersDelegate
+        public AdminCommonCommandOptions commonOptions = AdminCliOptionsParser.this.commonCommandOptions;
+
+        @Parameter(names = {"--from"}, description = "Group defined in the authenticated origin to be synchronised", arity = 1)
+        public String from;
+
+        @Parameter(names = {"--to"}, description = "Group in a study that will be synchronised", arity = 1)
+        public String to;
+
+        @Parameter(names = {"-s", "--study"}, description = "Study [[user@]project:]study where the list of users will be associated to.", required = true, arity = 1)
+        public String study;
+
+        @Parameter(names = {"--auth-origin"}, description = "Authentication id (as defined in the catalog configuration file) of the origin"
+                + " to be used to sync groups from", arity = 1, required = true)
+        public String authOrigin;
+
+        @Parameter(names = {"--sync-all"}, description = "Flag indicating whether to synchronise all the groups present in the study with"
+                + " their corresponding authenticated groups automatically. --from and --to parameters will not be needed when the flag "
+                + "is active.", arity = 0)
+        public boolean syncAll;
+
+        @Parameter(names = {"--type"}, description = "User account type of the users to be imported (guest or full).", arity = 1)
+        public String type = Account.GUEST;
+
+        @Parameter(names = {"--force"}, description = "Flag to force the synchronisation into groups that already exist and were not " +
+                "previously synchronised.", arity = 0)
+        public boolean force;
 
         @Parameter(names = {"--expiration-date"}, description = "Expiration date (DD/MM/YYYY). By default, 1 year starting from the "
                 + "import day", arity = 1)
         public String expDate;
-
-        @Parameter(names = {"--studies"}, description = "Comma separated list of studies where the imported users will be synchronized "
-                + "with their belonging groups. If empty, users will not have any special permission.", arity = 1)
-        public String studies;
     }
 
     @Parameters(commandNames = {"delete"}, commandDescription = "Delete the user Catalog database entry and the workspace")
@@ -573,6 +643,9 @@ public class AdminCliOptionsParser {
 
         @Parameter(names = {"--stop"}, description = "File with the new tool to be installed", arity = 0)
         public boolean stop;
+
+        @Parameter(names = {"--bg", "--background"}, description = "Run the server in background as a daemon", arity = 0)
+        public boolean background;
     }
 
     @Parameters(commandNames = {"grpc"}, commandDescription = "Print a summary list of all tools")
@@ -586,6 +659,21 @@ public class AdminCliOptionsParser {
 
         @Parameter(names = {"--stop"}, description = "File with the new tool to be installed", arity = 0)
         public boolean stop;
+
+        @Parameter(names = {"--bg", "--background"}, description = "Run the server in background as a daemon", arity = 0)
+        public boolean background;
+    }
+
+    @Parameters( commandNames = {"update"}, commandDescription = "Update secret key|algorithm" )
+    public class MetaKeyCommandOptions extends CatalogDatabaseCommandOptions {
+        @ParametersDelegate
+        public AdminCommonCommandOptions commonOptions = AdminCliOptionsParser.this.commonCommandOptions;
+
+        @Parameter( names = {"--key"}, description = "Update secret key in OpenCGA", arity = 1)
+        public String updateSecretKey;
+
+        @Parameter( names = {"--algorithm"}, description = "Update JWT algorithm in OpenCGA", arity = 1 )
+        public String algorithm;
     }
 
 
@@ -663,4 +751,9 @@ public class AdminCliOptionsParser {
     public ServerCommandOptions getServerCommandOptions() {
         return serverCommandOptions;
     }
+
+    public AdminCliOptionsParser.MetaCommandOptions getMetaCommandOptions() {
+        return this.metaCommandOptions;
+    }
+
 }

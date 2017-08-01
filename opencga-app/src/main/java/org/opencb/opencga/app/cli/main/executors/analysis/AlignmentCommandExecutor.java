@@ -1,3 +1,19 @@
+/*
+ * Copyright 2015-2017 OpenCB
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.opencb.opencga.app.cli.main.executors.analysis;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -129,10 +145,12 @@ public class AlignmentCommandExecutor extends OpencgaCommandExecutor {
     private QueryResponse<ReadAlignment> queryRest(AlignmentCommandOptions.QueryAlignmentCommandOptions commandOptions)
             throws CatalogException, IOException {
 
+        String study = resolveStudy(alignmentCommandOptions.queryAlignmentCommandOptions.study);
+
         String fileIds = commandOptions.fileId;
 
         ObjectMap o = new ObjectMap();
-        o.putIfNotNull("study", alignmentCommandOptions.queryAlignmentCommandOptions.study);
+        o.putIfNotNull("study", study);
         o.putIfNotNull(AlignmentDBAdaptor.QueryParams.REGION.key(), commandOptions.region);
         o.putIfNotNull(AlignmentDBAdaptor.QueryParams.MIN_MAPQ.key(), commandOptions.minMappingQuality);
         o.putIfNotNull("limit", commandOptions.limit);
@@ -145,10 +163,13 @@ public class AlignmentCommandExecutor extends OpencgaCommandExecutor {
 //        StopWatch watch = new StopWatch();
 //        watch.start();
         // We create the OpenCGA gRPC request object with the query, queryOptions, storageEngine and database
+
+        String study = resolveStudy(alignmentCommandOptions.queryAlignmentCommandOptions.study);
+
         Map<String, String> query = new HashMap<>();
         addParam(query, "fileId", commandOptions.fileId);
         addParam(query, "sid", commandOptions.commonOptions.sessionId);
-        addParam(query, "study", commandOptions.study);
+        addParam(query, "study", study);
         addParam(query, AlignmentDBAdaptor.QueryParams.REGION.key(), commandOptions.region);
         addParam(query, AlignmentDBAdaptor.QueryParams.MIN_MAPQ.key(), commandOptions.minMappingQuality);
 

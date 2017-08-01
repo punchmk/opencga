@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import org.opencb.commons.datastore.core.QueryOptions;
 import org.opencb.commons.datastore.core.QueryResult;
 import org.opencb.opencga.catalog.audit.AuditManager;
 import org.opencb.opencga.catalog.auth.authorization.AuthorizationManager;
-import org.opencb.opencga.catalog.config.Configuration;
+import org.opencb.opencga.core.config.Configuration;
 import org.opencb.opencga.catalog.db.DBAdaptorFactory;
 import org.opencb.opencga.catalog.db.api.*;
 import org.opencb.opencga.catalog.exceptions.CatalogException;
@@ -59,9 +59,13 @@ public abstract class AbstractManager {
     protected final IndividualDBAdaptor individualDBAdaptor;
     protected final SampleDBAdaptor sampleDBAdaptor;
     protected final CohortDBAdaptor cohortDBAdaptor;
+    protected final FamilyDBAdaptor familyDBAdaptor;
     protected final DatasetDBAdaptor datasetDBAdaptor;
     protected final JobDBAdaptor jobDBAdaptor;
     protected final PanelDBAdaptor panelDBAdaptor;
+    protected final ClinicalAnalysisDBAdaptor clinicalDBAdaptor;
+
+    protected static final String ANONYMOUS = "*";
 
     @Deprecated
     public AbstractManager(AuthorizationManager authorizationManager, AuditManager auditManager,
@@ -77,8 +81,10 @@ public abstract class AbstractManager {
         this.sampleDBAdaptor = catalogDBAdaptorFactory.getCatalogSampleDBAdaptor();
         this.jobDBAdaptor = catalogDBAdaptorFactory.getCatalogJobDBAdaptor();
         this.cohortDBAdaptor = catalogDBAdaptorFactory.getCatalogCohortDBAdaptor();
+        this.familyDBAdaptor = catalogDBAdaptorFactory.getCatalogFamilyDBAdaptor();
         this.datasetDBAdaptor = catalogDBAdaptorFactory.getCatalogDatasetDBAdaptor();
         this.panelDBAdaptor = catalogDBAdaptorFactory.getCatalogPanelDBAdaptor();
+        this.clinicalDBAdaptor = catalogDBAdaptorFactory.getClinicalAnalysisDBAdaptor();
         this.catalogIOManagerFactory = ioManagerFactory;
         this.catalogDBAdaptorFactory = catalogDBAdaptorFactory;
         this.catalogManager = null;
@@ -99,8 +105,10 @@ public abstract class AbstractManager {
         this.sampleDBAdaptor = catalogDBAdaptorFactory.getCatalogSampleDBAdaptor();
         this.jobDBAdaptor = catalogDBAdaptorFactory.getCatalogJobDBAdaptor();
         this.cohortDBAdaptor = catalogDBAdaptorFactory.getCatalogCohortDBAdaptor();
+        this.familyDBAdaptor = catalogDBAdaptorFactory.getCatalogFamilyDBAdaptor();
         this.datasetDBAdaptor = catalogDBAdaptorFactory.getCatalogDatasetDBAdaptor();
         this.panelDBAdaptor = catalogDBAdaptorFactory.getCatalogPanelDBAdaptor();
+        this.clinicalDBAdaptor = catalogDBAdaptorFactory.getClinicalAnalysisDBAdaptor();
         this.catalogIOManagerFactory = ioManagerFactory;
         this.catalogDBAdaptorFactory = catalogDBAdaptorFactory;
         this.catalogManager = catalogManager;
@@ -122,8 +130,10 @@ public abstract class AbstractManager {
         this.sampleDBAdaptor = catalogDBAdaptorFactory.getCatalogSampleDBAdaptor();
         this.jobDBAdaptor = catalogDBAdaptorFactory.getCatalogJobDBAdaptor();
         this.cohortDBAdaptor = catalogDBAdaptorFactory.getCatalogCohortDBAdaptor();
+        this.familyDBAdaptor = catalogDBAdaptorFactory.getCatalogFamilyDBAdaptor();
         this.datasetDBAdaptor = catalogDBAdaptorFactory.getCatalogDatasetDBAdaptor();
         this.panelDBAdaptor = catalogDBAdaptorFactory.getCatalogPanelDBAdaptor();
+        this.clinicalDBAdaptor = catalogDBAdaptorFactory.getClinicalAnalysisDBAdaptor();
         this.catalogIOManagerFactory = ioManagerFactory;
         this.catalogDBAdaptorFactory = catalogDBAdaptorFactory;
         this.catalogManager = null;
@@ -176,7 +186,7 @@ public abstract class AbstractManager {
         String aliasProject = (String) parameters.get("project");
         String aliasStudy = (String) parameters.get("study");
 
-        if (ownerId.equalsIgnoreCase("anonymous")) {
+        if (ownerId.equalsIgnoreCase(ANONYMOUS)) {
             return new LinkedList<>();
         }
 
@@ -221,7 +231,7 @@ public abstract class AbstractManager {
         return studyIds;
     }
 
-    public class MyResourceId {
+    public static class MyResourceId {
         private String user;
         private long studyId;
         private long resourceId;
@@ -263,7 +273,7 @@ public abstract class AbstractManager {
         }
     }
 
-    public class MyResourceIds {
+    public static class MyResourceIds {
         private String user;
         private long studyId;
         private List<Long> resourceIds;

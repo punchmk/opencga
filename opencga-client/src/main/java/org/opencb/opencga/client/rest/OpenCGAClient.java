@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -112,6 +112,11 @@ public class OpenCGAClient {
     public PanelClient getPanelClient() {
         clients.putIfAbsent("PANEL", new PanelClient(userId, sessionId, clientConfiguration));
         return (PanelClient) clients.get("PANEL");
+    }
+
+    public FamilyClient getFamilyClient() {
+        clients.putIfAbsent("FAMILY", new FamilyClient(userId, sessionId, clientConfiguration));
+        return (FamilyClient) clients.get("FAMILY");
     }
 
     public ToolClient getToolClient() {

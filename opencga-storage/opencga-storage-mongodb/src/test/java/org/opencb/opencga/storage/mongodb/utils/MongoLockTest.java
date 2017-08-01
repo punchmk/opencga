@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -90,10 +90,8 @@ public class MongoLockTest implements MongoDBVariantStorageTest {
             futures.add(executorService.submit(() -> {
                 try {
                     for (int i = 0; i < 5; i++) {
-                        System.out.println("i = " + i);
-
-                        long lock = mongoLock.lock(lockId, 1000, 20000);
-                        System.out.println("[" + Thread.currentThread().getName() + "] Enter LOCK");
+                        long lock = mongoLock.lock(lockId, 1000, 200000);
+                        System.out.println("[" + Thread.currentThread().getName() + "] Enter LOCK " + lock);
                         assertEquals(threadWithLock.toString(), 0, threadWithLock.size());
                         threadWithLock.add(Thread.currentThread().getName());
                         assertEquals(threadWithLock.toString(), 1, threadWithLock.size());
@@ -102,8 +100,7 @@ public class MongoLockTest implements MongoDBVariantStorageTest {
                         assertEquals(threadWithLock.toString(), 1, threadWithLock.size());
                         assertEquals(threadWithLock.toString(), value, counter.get());
                         threadWithLock.remove(Thread.currentThread().getName());
-                        System.out.println("lock = " + lock);
-                        System.out.println("[" + Thread.currentThread().getName() + "] Exit LOCK");
+                        System.out.println("[" + Thread.currentThread().getName() + "] Exit LOCK " + lock);
 
                         mongoLock.unlock(lockId, lock);
                     }

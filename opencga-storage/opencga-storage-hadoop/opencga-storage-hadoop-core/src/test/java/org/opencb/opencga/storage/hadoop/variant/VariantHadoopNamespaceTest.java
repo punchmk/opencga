@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,42 +49,43 @@ public class VariantHadoopNamespaceTest extends VariantStorageBaseTest implement
 
     @Override
     public Map<String, ?> getOtherStorageConfigurationOptions() {
-        return new ObjectMap(AbstractHadoopVariantStoragePipeline.SKIP_CREATE_PHOENIX_INDEXES, true);
+        return new ObjectMap(HadoopVariantStorageEngine.VARIANT_TABLE_INDEXES_SKIP, true);
     }
 
     @Test
     public void testNamespace() throws Exception {
         HadoopVariantStorageEngine variantStorageManager = getVariantStorageEngine();
+        variantStorageManager.getOptions().put(HadoopVariantStorageEngine.HBASE_NAMESPACE, "opencga");
         VariantHadoopDBAdaptor dbAdaptor = variantStorageManager.getDBAdaptor();
         Admin admin = dbAdaptor.getConnection().getAdmin();
-//        admin.createNamespace(NamespaceDescriptor.create("opencga").build());
+        admin.createNamespace(NamespaceDescriptor.create("opencga").build());
 
 
-        runDefaultETL(smallInputUri, variantStorageManager, newStudyConfiguration(),
+        runDefaultETL(getResourceUri("s1.genome.vcf"), variantStorageManager, newStudyConfiguration(),
                 new ObjectMap()
-                        .append(HadoopVariantStorageEngine.OPENCGA_STORAGE_HADOOP_VARIANT_HBASE_NAMESPACE, "opencga")
+                        .append(HadoopVariantStorageEngine.HBASE_NAMESPACE, "opencga")
                         .append(VariantStorageEngine.Options.ANNOTATE.key(), true)
                         .append(VariantStorageEngine.Options.CALCULATE_STATS.key(), true));
 
         NamespaceDescriptor[] namespaceDescriptors = admin.listNamespaceDescriptors();
         for (NamespaceDescriptor namespaceDescriptor : namespaceDescriptors) {
             System.out.println("namespaceDescriptor = " + namespaceDescriptor);
-            if (namespaceDescriptor.getName().equals("opencga")) {
-                Assert.assertEquals(2, admin.listTableNamesByNamespace(namespaceDescriptor.getName()).length);
-            }
             for (TableName tableName : admin.listTableNamesByNamespace(namespaceDescriptor.getName())) {
                 System.out.println("\ttableName = " + tableName);
             }
+            if (namespaceDescriptor.getName().equals("opencga")) {
+                Assert.assertEquals(2, admin.listTableNamesByNamespace(namespaceDescriptor.getName()).length);
+            }
         }
 
-        assertTrue(variantStorageManager.getDBAdaptor(DB_NAME).count(null).first() > 0);
+        assertTrue(variantStorageManager.getDBAdaptor().count(null).first() > 0);
     }
 
     @Test
     public void testNoNamespace() throws Exception {
         runDefaultETL(smallInputUri, getVariantStorageEngine(), newStudyConfiguration(),
                 new ObjectMap()
-                        .append(HadoopVariantStorageEngine.OPENCGA_STORAGE_HADOOP_VARIANT_HBASE_NAMESPACE, "")
+                        .append(HadoopVariantStorageEngine.HBASE_NAMESPACE, "")
                         .append(VariantStorageEngine.Options.ANNOTATE.key(), true)
                         .append(VariantStorageEngine.Options.CALCULATE_STATS.key(), true));
 
@@ -97,7 +98,7 @@ public class VariantHadoopNamespaceTest extends VariantStorageBaseTest implement
                 System.out.println("\ttableName = " + tableName);
             }
         }
-        assertTrue(variantStorageManager.getDBAdaptor(DB_NAME).count(null).first() > 0);
+        assertTrue(variantStorageManager.getDBAdaptor().count(null).first() > 0);
     }
 
 }

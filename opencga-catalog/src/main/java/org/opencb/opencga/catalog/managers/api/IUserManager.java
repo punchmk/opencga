@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,8 +24,8 @@ import org.opencb.opencga.catalog.exceptions.CatalogException;
 import org.opencb.opencga.catalog.models.File;
 import org.opencb.opencga.catalog.models.Session;
 import org.opencb.opencga.catalog.models.User;
+import org.opencb.opencga.core.results.LdapImportResult;
 
-import javax.naming.NamingException;
 import java.io.IOException;
 import java.util.List;
 
@@ -61,20 +61,49 @@ public interface IUserManager extends ResourceManager<String, User> {
     QueryResult<User> create(String userId, String name, String email, String password, String organization, Long quota, String type,
                              QueryOptions options) throws CatalogException;
 
+//    /**
+//     * This method can only be run by the admin user. It will import users from other authentication origins such as LDAP, Kerberos, etc
+//     * into catalog.
+//     *
+//     * @param authOrigin Id present in the catalog configuration of the authentication origin.
+//     * @param accountType Type of the account to be created for the imported users (guest, full).
+//     * @param params Object map containing other parameters that are useful to import users.
+//     * @param adminPassword Admin password.
+//     * @return A list of users that have been imported.
+//     * @throws CatalogException catalogException
+//     * @throws NamingException NamingException
+//     */
+//    List<QueryResult<User>> importFromExternalAuthOriginOld(String authOrigin, String accountType, ObjectMap params, String adminPassword)
+//            throws CatalogException, NamingException;
+
     /**
-     * This method can only be run by the admin user. It will import users from other authentication origins such as LDAP, Kerberos, etc
-     * into catalog.
+     * This method can only be run by the admin user. It will import users and groups from other authentication origins such as LDAP,
+     * Kerberos, etc into catalog.
      *
      * @param authOrigin Id present in the catalog configuration of the authentication origin.
      * @param accountType Type of the account to be created for the imported users (guest, full).
      * @param params Object map containing other parameters that are useful to import users.
      * @param adminPassword Admin password.
-     * @return A list of users that have been imported.
      * @throws CatalogException catalogException
-     * @throws NamingException NamingException
+     * @return LdapImportResult Object containing a summary of the actions performed.
      */
-    List<QueryResult<User>> importFromExternalAuthOrigin(String authOrigin, String accountType, ObjectMap params, String adminPassword)
-            throws CatalogException, NamingException;
+    LdapImportResult importFromExternalAuthOrigin(String authOrigin, String accountType, ObjectMap params, String adminPassword)
+            throws CatalogException;
+
+//    /**
+//     * This method can only be run by the admin user. It will import users from groups from other authentication origins such as LDAP,
+//     * Kerberos, etc into catalog.
+//     *
+//     * @param authOrigin Id present in the catalog configuration of the authentication origin.
+//     * @param accountType Type of the account to be created for the imported users (guest, full).
+//     * @param params Object map containing other parameters that are useful to import users.
+//     * @param adminPassword Admin password.
+//     * @throws CatalogException catalogException
+//     * @throws NamingException NamingException
+//     * @throws IOException IOException
+//     */
+//    void importGroupsFromExternalAuthOrigin(String authOrigin, String accountType, ObjectMap params, String adminPassword)
+//            throws CatalogException, NamingException, IOException;
 
     /**
      * Delete entries from Catalog.
@@ -104,27 +133,22 @@ public interface IUserManager extends ResourceManager<String, User> {
 
     QueryResult<Session> login(String userId, String password, String sessionIp) throws CatalogException, IOException;
 
+    QueryResult<Session> refreshToken(String userId, String token, String sessionIp) throws CatalogException, IOException;
+
     /**
      * This method will be only callable by the system. It generates a new session id for the user.
      *
-     * @param sessionId Admin session id.
      * @param userId user id for which a session will be generated.
+     * @param adminCredentials Password or active session of the OpenCGA admin.
      * @return an objectMap containing the new sessionId
      * @throws CatalogException if the password is not correct or the userId does not exist.
      */
-    QueryResult<Session> getNewUserSession(String sessionId, String userId) throws CatalogException;
+    QueryResult<Session> getSystemTokenForUser(String userId, String adminCredentials) throws CatalogException;
 
     QueryResult resetPassword(String userId, String sessionId) throws CatalogException;
 
     void validatePassword(String userId, String password, boolean throwException) throws CatalogException;
 
-    @Deprecated
-    QueryResult<ObjectMap> loginAsAnonymous(String sessionIp) throws CatalogException, IOException;
-
-    QueryResult logout(String userId, String sessionId) throws CatalogException;
-
-    @Deprecated
-    QueryResult logoutAnonymous(String sessionId) throws CatalogException;
 
     /*          Filter operations     */
     /**

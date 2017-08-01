@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import org.opencb.biodata.models.variant.Variant;
 import org.opencb.commons.datastore.core.QueryOptions;
 import org.opencb.opencga.storage.core.metadata.StudyConfigurationManager;
 import org.opencb.opencga.storage.core.variant.adaptors.VariantDBIterator;
+import org.opencb.opencga.storage.core.variant.adaptors.VariantField;
 import org.opencb.opencga.storage.hadoop.variant.GenomeHelper;
 import org.opencb.opencga.storage.hadoop.variant.converters.HBaseToVariantConverter;
 import org.slf4j.Logger;
@@ -28,8 +29,8 @@ import org.slf4j.LoggerFactory;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Created on 16/12/15.
@@ -42,20 +43,16 @@ public class VariantHBaseResultSetIterator extends VariantDBIterator {
     private final ResultSet resultSet;
     private final GenomeHelper genomeHelper;
     private final StudyConfigurationManager scm;
-    private final HBaseToVariantConverter converter;
+    private final HBaseToVariantConverter<ResultSet> converter;
     private final Logger logger = LoggerFactory.getLogger(VariantHBaseResultSetIterator.class);
 
     private boolean hasNext = false;
 
     public VariantHBaseResultSetIterator(
             Statement statement, ResultSet resultSet, GenomeHelper genomeHelper, StudyConfigurationManager scm,
-            QueryOptions options) throws SQLException {
-        this(statement, resultSet, genomeHelper, scm, options, Collections.emptyList());
-    }
-
-    public VariantHBaseResultSetIterator(
-            Statement statement, ResultSet resultSet, GenomeHelper genomeHelper, StudyConfigurationManager scm,
-            QueryOptions options, List<String> returnedSamples) throws SQLException {
+            List<String> returnedSamples, Set<VariantField> returnedFields, List<String> formats,
+            String unknownGenotype, QueryOptions options)
+            throws SQLException {
         this.statement = statement;
         this.resultSet = resultSet;
         this.genomeHelper = genomeHelper;
@@ -63,11 +60,14 @@ public class VariantHBaseResultSetIterator extends VariantDBIterator {
         if (options == null) {
             options = QueryOptions.empty();
         }
-        converter = new HBaseToVariantConverter(this.genomeHelper, this.scm)
+        converter = HBaseToVariantConverter.fromResultSet(this.genomeHelper, this.scm)
+                .setReturnedFields(returnedFields)
                 .setReturnedSamples(returnedSamples)
                 .setMutableSamplesPosition(false)
                 .setStudyNameAsStudyId(true)
-                .setSimpleGenotypes(options.getBoolean("simpleGenotypes", true));
+                .setUnknownGenotype(unknownGenotype)
+                .setSimpleGenotypes(options.getBoolean("simpleGenotypes", true))
+                .setFormats(formats);
         hasNext = fetch(resultSet::next);
     }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -60,6 +60,8 @@ public class StudyConfiguration {
 
     private Long timeStamp;
 
+    private VariantStudyMetadata variantMetadata;
+
     private ObjectMap attributes;
 
     protected StudyConfiguration() {
@@ -81,9 +83,17 @@ public class StudyConfiguration {
         this.samplesInFiles = new HashMap<>(other.samplesInFiles);
         this.calculatedStats = new LinkedHashSet<>(other.calculatedStats);
         this.invalidStats = new LinkedHashSet<>(other.invalidStats);
-        this.batches = other.batches;
+        this.batches = new ArrayList<>(other.batches.size());
+        for (BatchFileOperation batch : other.batches) {
+            this.batches.add(new BatchFileOperation(batch));
+        }
         this.aggregation = other.aggregation;
         this.timeStamp = other.timeStamp;
+        if (other.variantMetadata == null) {
+            this.variantMetadata = new VariantStudyMetadata();
+        } else {
+            this.variantMetadata = new VariantStudyMetadata(other.variantMetadata);
+        }
         this.attributes = new ObjectMap(other.attributes);
     }
 
@@ -117,6 +127,7 @@ public class StudyConfiguration {
         this.batches = new ArrayList<>();
         this.aggregation = VariantSource.Aggregation.NONE;
         this.timeStamp = 0L;
+        this.variantMetadata = new VariantStudyMetadata();
         this.attributes = new ObjectMap();
     }
 
@@ -280,6 +291,15 @@ public class StudyConfiguration {
         this.timeStamp = timeStamp;
     }
 
+    public VariantStudyMetadata getVariantMetadata() {
+        return variantMetadata;
+    }
+
+    public StudyConfiguration setVariantMetadata(VariantStudyMetadata variantMetadata) {
+        this.variantMetadata = variantMetadata;
+        return this;
+    }
+
     public ObjectMap getAttributes() {
         return attributes;
     }
@@ -364,16 +384,15 @@ public class StudyConfiguration {
     public static BiMap<String, Integer> getIndexedSamplesPosition(StudyConfiguration studyConfiguration, int ... fileIds) {
         Objects.requireNonNull(studyConfiguration, "StudyConfiguration is required");
         BiMap<String, Integer> samplesPosition = HashBiMap.create(studyConfiguration.getSampleIds().size());
-        int position = 0;
         BiMap<Integer, String> idSamples = studyConfiguration.sampleIds.inverse();
         for (Integer indexedFileId : studyConfiguration.getIndexedFiles()) {
             for (Integer sampleId : studyConfiguration.getSamplesInFiles().get(indexedFileId)) {
-                samplesPosition.putIfAbsent(idSamples.get(sampleId), position++);
+                samplesPosition.putIfAbsent(idSamples.get(sampleId), samplesPosition.size());
             }
         }
         for (int fileId : fileIds) {
             for (Integer sampleId : studyConfiguration.getSamplesInFiles().get(fileId)) {
-                samplesPosition.putIfAbsent(idSamples.get(sampleId), position++);
+                samplesPosition.putIfAbsent(idSamples.get(sampleId), samplesPosition.size());
             }
         }
         return samplesPosition;
@@ -400,17 +419,18 @@ public class StudyConfiguration {
      */
     public static LinkedHashMap<String, Integer> getReturnedSamplesPosition(
             StudyConfiguration studyConfiguration,
-            LinkedHashSet<String> returnedSamples) {
+            LinkedHashSet<?> returnedSamples) {
         return getReturnedSamplesPosition(studyConfiguration, returnedSamples, StudyConfiguration::getIndexedSamplesPosition);
     }
 
     public static LinkedHashMap<String, Integer> getReturnedSamplesPosition(
             StudyConfiguration studyConfiguration,
-            LinkedHashSet<String> returnedSamples,
+            LinkedHashSet<?> returnedSamples,
             Function<StudyConfiguration, BiMap<String, Integer>> getIndexedSamplesPosition) {
         LinkedHashMap<String, Integer> samplesPosition;
-        if (returnedSamples == null || returnedSamples.isEmpty()) {
-            BiMap<Integer, String> unorderedSamplesPosition = getIndexedSamplesPosition(studyConfiguration).inverse();
+        // If null, return ALL samples
+        if (returnedSamples == null) {
+            BiMap<Integer, String> unorderedSamplesPosition = getIndexedSamplesPosition.apply(studyConfiguration).inverse();
             samplesPosition = new LinkedHashMap<>(unorderedSamplesPosition.size());
             for (int i = 0; i < unorderedSamplesPosition.size(); i++) {
                 samplesPosition.put(unorderedSamplesPosition.get(i), i);
@@ -419,9 +439,15 @@ public class StudyConfiguration {
             samplesPosition = new LinkedHashMap<>(returnedSamples.size());
             int index = 0;
             BiMap<String, Integer> indexedSamplesId = getIndexedSamplesPosition.apply(studyConfiguration);
-            for (String returnedSample : returnedSamples) {
-                if (!returnedSample.isEmpty() && StringUtils.isNumeric(returnedSample)) {
-                    returnedSample = studyConfiguration.getSampleIds().inverse().get(Integer.parseInt(returnedSample));
+            for (Object returnedSampleObj : returnedSamples) {
+                String returnedSample;
+                if (returnedSampleObj instanceof Number) {
+                    returnedSample = studyConfiguration.getSampleIds().inverse().get(((Number) returnedSampleObj).intValue());
+                } else if (returnedSampleObj instanceof String
+                        && !((String) returnedSampleObj).isEmpty() && StringUtils.isNumeric((String) returnedSampleObj)) {
+                    returnedSample = studyConfiguration.getSampleIds().inverse().get(Integer.parseInt(((String) returnedSampleObj)));
+                } else {
+                    returnedSample = returnedSampleObj.toString();
                 }
                 if (!samplesPosition.containsKey(returnedSample)) {
                     if (indexedSamplesId.containsKey(returnedSample)) {

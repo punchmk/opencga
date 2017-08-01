@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -127,7 +127,7 @@ public class HBaseLock {
             // You win the lock if the first available lock is yours.
         } while (!readToken.equals(token));
 
-        logger.info("Won the lock with token " + token + " (" + token.hashCode() + ") from lock: " + Arrays.toString(lockValue));
+        logger.debug("Won the lock with token " + token + " (" + token.hashCode() + ") from lock: " + Arrays.toString(lockValue));
         // Overwrite the lock with the winner current lock. Remove previous expired locks
         putCurrentLock(token, lockDuration, column);
 
@@ -159,7 +159,7 @@ public class HBaseLock {
                     + lockToken + " != " + currentLock.hashCode() + " from " + Arrays.toString(lockValue));
         }
 
-        logger.info("Unlock lock with token " + lockToken);
+        logger.debug("Unlock lock with token " + lockToken);
         clearLock(column);
     }
 

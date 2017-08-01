@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,49 +26,52 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
 import org.opencb.biodata.formats.io.FileFormatException;
-import org.opencb.biodata.formats.pedigree.io.PedigreePedReader;
-import org.opencb.biodata.formats.pedigree.io.PedigreeReader;
-import org.opencb.biodata.formats.variant.io.VariantReader;
-import org.opencb.biodata.formats.variant.io.VariantWriter;
 import org.opencb.biodata.formats.variant.vcf4.FullVcfCodec;
-import org.opencb.biodata.formats.variant.vcf4.io.VariantVcfReader;
-import org.opencb.biodata.models.variant.*;
+import org.opencb.biodata.formats.variant.vcf4.VariantAggregatedVcfFactory;
+import org.opencb.biodata.formats.variant.vcf4.VariantVcfFactory;
+import org.opencb.biodata.models.variant.StudyEntry;
+import org.opencb.biodata.models.variant.VariantSource;
+import org.opencb.biodata.models.variant.VariantStudy;
 import org.opencb.biodata.models.variant.avro.VariantAvro;
 import org.opencb.biodata.tools.variant.stats.VariantGlobalStatsCalculator;
-import org.opencb.biodata.tools.variant.tasks.VariantRunner;
+import org.opencb.commons.ProgressLogger;
 import org.opencb.commons.datastore.core.ObjectMap;
 import org.opencb.commons.datastore.core.QueryOptions;
 import org.opencb.commons.io.DataWriter;
 import org.opencb.commons.run.ParallelTaskRunner;
-import org.opencb.commons.run.Task;
 import org.opencb.hpg.bigdata.core.io.avro.AvroFileWriter;
 import org.opencb.opencga.storage.core.StoragePipeline;
 import org.opencb.opencga.storage.core.config.StorageConfiguration;
 import org.opencb.opencga.storage.core.exceptions.StorageEngineException;
 import org.opencb.opencga.storage.core.io.plain.StringDataReader;
 import org.opencb.opencga.storage.core.io.plain.StringDataWriter;
-import org.opencb.opencga.storage.core.metadata.BatchFileOperation;
 import org.opencb.opencga.storage.core.metadata.StudyConfiguration;
 import org.opencb.opencga.storage.core.metadata.StudyConfigurationManager;
+import org.opencb.opencga.storage.core.metadata.VariantStudyMetadata;
+import org.opencb.opencga.storage.core.metadata.VariantStudyMetadata.VariantMetadataRecord;
 import org.opencb.opencga.storage.core.variant.VariantStorageEngine.Options;
 import org.opencb.opencga.storage.core.variant.adaptors.VariantDBAdaptor;
 import org.opencb.opencga.storage.core.variant.io.VariantReaderUtils;
-import org.opencb.opencga.storage.core.variant.io.json.VariantJsonWriter;
 import org.opencb.opencga.storage.core.variant.transform.MalformedVariantHandler;
 import org.opencb.opencga.storage.core.variant.transform.VariantAvroTransformTask;
 import org.opencb.opencga.storage.core.variant.transform.VariantJsonTransformTask;
 import org.opencb.opencga.storage.core.variant.transform.VariantTransformTask;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ExecutionException;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.zip.GZIPInputStream;
 
 /**
@@ -84,29 +87,27 @@ public abstract class VariantStoragePipeline implements StoragePipeline {
     protected final ObjectMap options;
     protected final VariantDBAdaptor dbAdaptor;
     protected final VariantReaderUtils variantReaderUtils;
-    protected final Logger logger;
+    private final Logger logger = LoggerFactory.getLogger(VariantStoragePipeline.class);
     protected final ObjectMap transformStats = new ObjectMap();
 
 
-    public VariantStoragePipeline(StorageConfiguration configuration, String storageEngineId, Logger logger, VariantDBAdaptor dbAdaptor,
+    public VariantStoragePipeline(StorageConfiguration configuration, String storageEngineId, VariantDBAdaptor dbAdaptor,
                                   VariantReaderUtils variantReaderUtils) {
-        this(configuration, storageEngineId, logger, dbAdaptor, variantReaderUtils,
+        this(configuration, storageEngineId, dbAdaptor, variantReaderUtils,
                 new ObjectMap(configuration.getStorageEngine(storageEngineId).getVariant().getOptions()));
     }
 
     /**
      * @param configuration     Storage Configuration
      * @param storageEngineId   StorageEngineID
-     * @param logger            Logger
      * @param dbAdaptor         VariantDBAdaptor. Can be null if the load step is skipped
      * @param variantReaderUtils    VariantReaderUtils
      * @param options           Unique copy of the options to be used. This object can not be shared.
      */
-    public VariantStoragePipeline(StorageConfiguration configuration, String storageEngineId, Logger logger, VariantDBAdaptor dbAdaptor,
+    public VariantStoragePipeline(StorageConfiguration configuration, String storageEngineId, VariantDBAdaptor dbAdaptor,
                                   VariantReaderUtils variantReaderUtils, ObjectMap options) {
         this.configuration = configuration;
         this.storageEngineId = storageEngineId;
-        this.logger = logger;
         this.dbAdaptor = dbAdaptor;
         this.variantReaderUtils = variantReaderUtils;
         this.options = options;
@@ -141,36 +142,29 @@ public abstract class VariantStoragePipeline implements StoragePipeline {
             studyConfiguration.setAggregation(options.get(Options.AGGREGATED_TYPE.key(), VariantSource.Aggregation.class));
             options.put(Options.ISOLATE_FILE_FROM_STUDY_CONFIGURATION.key(), true);
         } else {
-            long lock = dbAdaptor.getStudyConfigurationManager().lockStudy(studyId);
-            try {
-                //Get the studyConfiguration. If there is no StudyConfiguration, create a empty one.
-                studyConfiguration = getStudyConfiguration(true);
-
-                if (studyConfiguration == null) {
+            studyConfiguration = dbAdaptor.getStudyConfigurationManager().lockAndUpdate(studyId, existingStudyConfiguration -> {
+                if (existingStudyConfiguration == null) {
                     logger.info("Creating a new StudyConfiguration");
-                    checkStudyId(studyId);
-                    studyConfiguration = new StudyConfiguration(studyId, options.getString(Options.STUDY_NAME.key()));
-                    studyConfiguration.setAggregation(options.get(Options.AGGREGATED_TYPE.key(),
+                    StudyConfigurationManager.checkStudyId(studyId);
+                    existingStudyConfiguration = new StudyConfiguration(studyId, options.getString(Options.STUDY_NAME.key()));
+                    existingStudyConfiguration.setAggregation(options.get(Options.AGGREGATED_TYPE.key(),
                             VariantSource.Aggregation.class, Options.AGGREGATED_TYPE.defaultValue()));
                 }
-                if (studyConfiguration.getAggregation() == null) {
-                    studyConfiguration.setAggregation(options.get(Options.AGGREGATED_TYPE.key(),
+                if (existingStudyConfiguration.getAggregation() == null) {
+                    existingStudyConfiguration.setAggregation(options.get(Options.AGGREGATED_TYPE.key(),
                             VariantSource.Aggregation.class, Options.AGGREGATED_TYPE.defaultValue()));
                 }
-                fileId = checkNewFile(studyConfiguration, fileId, fileName);
-                options.put(Options.FILE_ID.key(), fileId);
-                dbAdaptor.getStudyConfigurationManager().updateStudyConfiguration(studyConfiguration, null);
-            } finally {
-                dbAdaptor.getStudyConfigurationManager().unLockStudy(studyId, lock);
-            }
+                options.put(Options.FILE_ID.key(), StudyConfigurationManager.checkNewFile(existingStudyConfiguration, fileId, fileName));
+                return existingStudyConfiguration;
+            });
         }
         options.put(Options.STUDY_CONFIGURATION.key(), studyConfiguration);
 
         return input;
     }
 
-    protected VariantSource buildVariantSource(Path input, ObjectMap options) throws StorageEngineException {
-        StudyConfiguration studyConfiguration = getStudyConfiguration(options);
+    protected VariantSource buildVariantSource(Path input) throws StorageEngineException {
+        StudyConfiguration studyConfiguration = getStudyConfiguration();
         Integer fileId;
         if (options.getBoolean(Options.ISOLATE_FILE_FROM_STUDY_CONFIGURATION.key(), Options.ISOLATE_FILE_FROM_STUDY_CONFIGURATION
                 .defaultValue())) {
@@ -232,7 +226,12 @@ public abstract class VariantStoragePipeline implements StoragePipeline {
         String format = options.getString(Options.TRANSFORM_FORMAT.key(), Options.TRANSFORM_FORMAT.defaultValue());
         String parser = options.getString("transform.parser", HTSJDK_PARSER);
 
-        VariantSource source = buildVariantSource(input, options);
+        // Create empty VariantSource
+        VariantSource source = buildVariantSource(input);
+        // Read VariantSource
+        source = VariantReaderUtils.readVariantSource(input, source);
+
+        VariantStudyMetadata variantMetadata = new VariantStudyMetadata().addVariantSource(source);
         String fileName = source.getFileName();
         boolean generateReferenceBlocks = options.getBoolean(Options.GVCF.key(), false);
 
@@ -273,47 +272,54 @@ public abstract class VariantStoragePipeline implements StoragePipeline {
 
         logger.info("Transforming variants using {} into {} ...", parser, format);
         long start, end;
-        if (numTasks == 1 && "json".equals(format)) { //Run transformation with a SingleThread runner. The legacy way
-            if (!".gz".equals(extension)) { //FIXME: Add compatibility with snappy compression
-                logger.warn("Force using gzip compression");
-                extension = ".gz";
-                outputVariantsFile = output.resolve(fileName + ".variants.json" + extension);
-            }
-
-            //Ped Reader
-            PedigreeReader pedReader = null;
-            if (pedigree != null && pedigree.toFile().exists()) {    //FIXME Add "endsWith(".ped") ??
-                pedReader = new PedigreePedReader(pedigree.toString());
-            }
-
-            //Reader
-            VariantReader reader = new VariantVcfReader(source, input.toAbsolutePath().toString());
-
-            //Writers
-            VariantJsonWriter jsonWriter = new VariantJsonWriter(source, output);
-            jsonWriter.includeStats(includeStats);
-
-            List<VariantWriter> writers = Collections.<VariantWriter>singletonList(jsonWriter);
-
-            //Runner
-            VariantRunner vr = new VariantRunner(source, reader, pedReader, writers,
-                    Collections.<Task<Variant>>singletonList(new VariantGlobalStatsCalculator(source)), batchSize);
-
-            logger.info("Single thread transform...");
-            start = System.currentTimeMillis();
-            try {
-                vr.run();
-            } catch (IOException e) {
-                throw new StorageEngineException("Fail runner execution", e);
-            }
-            end = System.currentTimeMillis();
-
-        } else if ("avro".equals(format)) {
-            //Read VariantSource
-            source = VariantReaderUtils.readVariantSource(input, source);
+//        if (numTasks == 1 && "json".equals(format)) { //Run transformation with a SingleThread runner. The legacy way
+//            if (!".gz".equals(extension)) { //FIXME: Add compatibility with snappy compression
+//                logger.warn("Force using gzip compression");
+//                extension = ".gz";
+//                outputVariantsFile = output.resolve(fileName + ".variants.json" + extension);
+//            }
+//
+//            //Ped Reader
+//            PedigreeReader pedReader = null;
+//            if (pedigree != null && pedigree.toFile().exists()) {    //FIXME Add "endsWith(".ped") ??
+//                pedReader = new PedigreePedReader(pedigree.toString());
+//            }
+//
+//            //Reader
+//            VariantReader reader = new VariantVcfReader(source, input.toAbsolutePath().toString());
+//
+//            //Writers
+//            VariantJsonWriter jsonWriter = new VariantJsonWriter(source, output);
+//            jsonWriter.includeStats(includeStats);
+//
+//            List<VariantWriter> writers = Collections.singletonList(jsonWriter);
+//
+//            //Runner
+//            VariantRunner vr = new VariantRunner(source, reader, pedReader, writers,
+//                    Collections.singletonList(new VariantGlobalStatsCalculator(source)), batchSize);
+//
+//            logger.info("Single thread transform...");
+//            start = System.currentTimeMillis();
+//            try {
+//                vr.run();
+//            } catch (IOException e) {
+//                throw new StorageEngineException("Fail runner execution", e);
+//            }
+//            end = System.currentTimeMillis();
+//
+//        } else
+        if ("avro".equals(format)) {
 
             //Reader
             StringDataReader dataReader = new StringDataReader(input);
+            long fileSize = 0;
+            try {
+                fileSize = dataReader.getFileSize();
+            } catch (IOException e) {
+                throw new StorageEngineException("Error reading file " + input, e);
+            }
+            ProgressLogger progressLogger = new ProgressLogger("Transforming file:", fileSize, 200);
+            dataReader.setReadBytesListener((totalRead, delta) -> progressLogger.increment(delta, "Bytes"));
 
             //Writer
             DataWriter<ByteBuffer> dataWriter;
@@ -333,15 +339,20 @@ public abstract class VariantStoragePipeline implements StoragePipeline {
                 VariantGlobalStatsCalculator statsCalculator = new VariantGlobalStatsCalculator(source);
                 taskSupplier = () -> new VariantAvroTransformTask(header.getKey(), header.getValue(), finalSource, outputMetaFile,
                         statsCalculator, includeSrc, generateReferenceBlocks)
-                        .setFailOnError(failOnError).addMalformedErrorHandler(malformedHandler);
+                        .setFailOnError(failOnError)
+                        .addMalformedErrorHandler(malformedHandler)
+                        .configureNormalizer(variantMetadata);
             } else {
                 // TODO Create a utility to determine which extensions are variants files
                 final VariantVcfFactory factory = createVariantVcfFactory(source, fileName);
                 logger.info("Using Biodata to read variants.");
                 final VariantSource finalSource = source;
                 VariantGlobalStatsCalculator statsCalculator = new VariantGlobalStatsCalculator(source);
-                taskSupplier = () -> new VariantAvroTransformTask(factory, finalSource, outputMetaFile, statsCalculator, includeSrc)
-                        .setFailOnError(failOnError).addMalformedErrorHandler(malformedHandler);
+                taskSupplier = () -> new VariantAvroTransformTask(factory, finalSource, outputMetaFile, statsCalculator,
+                        includeSrc, generateReferenceBlocks)
+                        .setFailOnError(failOnError)
+                        .addMalformedErrorHandler(malformedHandler)
+                        .configureNormalizer(variantMetadata);
             }
 
             logger.info("Generating output file {}", outputVariantsFile);
@@ -366,11 +377,16 @@ public abstract class VariantStoragePipeline implements StoragePipeline {
             }
             end = System.currentTimeMillis();
         } else if ("json".equals(format)) {
-            //Read VariantSource
-            source = VariantReaderUtils.readVariantSource(input, source);
-
             //Reader
             StringDataReader dataReader = new StringDataReader(input);
+            long fileSize = 0;
+            try {
+                fileSize = dataReader.getFileSize();
+            } catch (IOException e) {
+                throw new StorageEngineException("Error reading file " + input, e);
+            }
+            ProgressLogger progressLogger = new ProgressLogger("Transforming file:", fileSize, 200);
+            dataReader.setReadBytesListener((totalRead, delta) -> progressLogger.increment(delta, "Bytes"));
 
             //Writers
             StringDataWriter dataWriter = new StringDataWriter(outputVariantsFile, true);
@@ -385,14 +401,19 @@ public abstract class VariantStoragePipeline implements StoragePipeline {
                 VariantGlobalStatsCalculator statsCalculator = new VariantGlobalStatsCalculator(finalSource);
                 taskSupplier = () -> new VariantJsonTransformTask(header.getKey(), header.getValue(), finalSource,
                         outputMetaFile, statsCalculator, includeSrc, generateReferenceBlocks)
-                        .setFailOnError(failOnError).addMalformedErrorHandler(malformedHandler);
+                        .setFailOnError(failOnError)
+                        .addMalformedErrorHandler(malformedHandler)
+                        .configureNormalizer(variantMetadata);
             } else {
                 // TODO Create a utility to determine which extensions are variants files
                 final VariantVcfFactory factory = createVariantVcfFactory(source, fileName);
                 logger.info("Using Biodata to read variants.");
                 VariantGlobalStatsCalculator statsCalculator = new VariantGlobalStatsCalculator(source);
-                taskSupplier = () -> new VariantJsonTransformTask(factory, finalSource, outputMetaFile, statsCalculator, includeSrc)
-                        .setFailOnError(failOnError).addMalformedErrorHandler(malformedHandler);
+                taskSupplier = () -> new VariantJsonTransformTask(factory, finalSource, outputMetaFile, statsCalculator,
+                        includeSrc, generateReferenceBlocks)
+                        .setFailOnError(failOnError)
+                        .addMalformedErrorHandler(malformedHandler)
+                        .configureNormalizer(variantMetadata);
             }
 
             logger.info("Generating output file {}", outputVariantsFile);
@@ -417,8 +438,6 @@ public abstract class VariantStoragePipeline implements StoragePipeline {
             }
             end = System.currentTimeMillis();
         } else if ("proto".equals(format)) {
-            //Read VariantSource
-            source = VariantReaderUtils.readVariantSource(input, source);
             Pair<Long, Long> times = processProto(input, fileName, output, source, outputVariantsFile, outputMetaFile,
                     includeSrc, parser, generateReferenceBlocks, batchSize, extension, compression, malformedHandler, failOnError);
             start = times.getKey();
@@ -476,20 +495,15 @@ public abstract class VariantStoragePipeline implements StoragePipeline {
         int studyId = options.getInt(Options.STUDY_ID.key(), -1);
         options.remove(Options.STUDY_CONFIGURATION.key());
 
-        long lock = dbAdaptor.getStudyConfigurationManager().lockStudy(studyId);
-
+        VariantSource source = readVariantSource(input, options);
         //Get the studyConfiguration. If there is no StudyConfiguration, create a empty one.
-        StudyConfiguration studyConfiguration;
-        try {
-            studyConfiguration = checkOrCreateStudyConfiguration(true);
-            VariantSource source = readVariantSource(input, options);
+        dbAdaptor.getStudyConfigurationManager().lockAndUpdate(studyId, studyConfiguration -> {
+            studyConfiguration = checkOrCreateStudyConfiguration(studyConfiguration);
             securePreLoad(studyConfiguration, source);
-            dbAdaptor.getStudyConfigurationManager().updateStudyConfiguration(studyConfiguration, null);
-        } finally {
-            dbAdaptor.getStudyConfigurationManager().unLockStudy(studyId, lock);
-        }
+            options.put(Options.STUDY_CONFIGURATION.key(), studyConfiguration);
+            return studyConfiguration;
+        });
 
-        options.put(Options.STUDY_CONFIGURATION.key(), studyConfiguration);
         return input;
     }
 
@@ -520,7 +534,7 @@ public abstract class VariantStoragePipeline implements StoragePipeline {
         try {
             fileId = Integer.parseInt(source.getFileId());
         } catch (NumberFormatException e) {
-            throw new StorageEngineException("FileId '" + source.getFileId() + "' is not an integer", e);
+            throw new StorageEngineException("FileId '" + source.getFileId() + "' from file " + fileName + " is not an integer", e);
         }
 
         if (fileId < 0) {
@@ -556,14 +570,15 @@ public abstract class VariantStoragePipeline implements StoragePipeline {
         }
 
 
-        fileId = checkNewFile(studyConfiguration, fileId, fileName);
+        fileId = StudyConfigurationManager.checkNewFile(studyConfiguration, fileId, fileName);
         options.put(Options.FILE_ID.key(), fileId);
         studyConfiguration.getFileIds().put(source.getFileName(), fileId);
 //        studyConfiguration.getHeaders().put(fileId, source.getMetadata().get(VariantFileUtils.VARIANT_FILE_HEADER).toString());
 
-        checkAndUpdateStudyConfiguration(studyConfiguration, fileId, source, options);
+        StudyConfigurationManager.checkAndUpdateStudyConfiguration(studyConfiguration, fileId, source, options);
 
         // Check Extra genotype fields
+        VariantStudyMetadata variantMetadata = studyConfiguration.getVariantMetadata();
         if (options.containsKey(Options.EXTRA_GENOTYPE_FIELDS.key())
                 && StringUtils.isNotEmpty(options.getString(Options.EXTRA_GENOTYPE_FIELDS.key()))) {
             List<String> extraFields = options.getAsStringList(Options.EXTRA_GENOTYPE_FIELDS.key());
@@ -576,24 +591,30 @@ public abstract class VariantStoragePipeline implements StoragePipeline {
             }
             if (!studyConfiguration.getAttributes().containsKey(Options.EXTRA_GENOTYPE_FIELDS_TYPE.key())) {
                 List<String> extraFieldsType = new ArrayList<>(extraFields.size());
+                List<Map<String, Object>> formats = (List) source.getHeader().getMeta().get("FORMAT");
+                Map<String, VariantMetadataRecord> map = formats.stream()
+                        .map(VariantMetadataRecord::new)
+                        .collect(Collectors.toMap(VariantMetadataRecord::getId, r -> r));
                 for (String extraField : extraFields) {
-                    List<Map<String, Object>> formats = (List) source.getHeader().getMeta().get("FORMAT");
-                    VCFHeaderLineType type = VCFHeaderLineType.String;
-                    for (Map<String, Object> format : formats) {
-                        if (format.get("ID").toString().equals(extraField)) {
-                            if ("1".equals(format.get("Number"))) {
-                                try {
-                                    type = VCFHeaderLineType.valueOf(Objects.toString(format.get("Type")));
-                                } catch (IllegalArgumentException ignore) {
-                                    type = VCFHeaderLineType.String;
-                                }
-                            } else {
-                                //Fields with arity != 1 are loaded as String
-                                type = VCFHeaderLineType.String;
-                            }
-                            break;
-                        }
+                    VCFHeaderLineType type;
+                    VariantMetadataRecord metadataRecord = map.get(extraField);
+                    if (metadataRecord == null) {
+                        throw new StorageEngineException("Unknown FORMAT field " + extraField);
                     }
+                    variantMetadata.getFormat().put(metadataRecord.getId(), metadataRecord);
+
+                    if (Objects.equals(metadataRecord.getNumber(), 1)) {
+                        try {
+                            type = metadataRecord.getType();
+                        } catch (IllegalArgumentException ignore) {
+                            type = VCFHeaderLineType.String;
+                        }
+                    } else {
+                        //Fields with arity != 1 are loaded as String
+                        type = VCFHeaderLineType.String;
+                    }
+
+
                     switch (type) {
                         case String:
                         case Float:
@@ -611,144 +632,25 @@ public abstract class VariantStoragePipeline implements StoragePipeline {
                 studyConfiguration.getAttributes().put(Options.EXTRA_GENOTYPE_FIELDS_TYPE.key(), extraFieldsType);
             }
         }
+        List<String> formats = studyConfiguration.getAttributes().getAsStringList(Options.EXTRA_GENOTYPE_FIELDS_TYPE.key());
+
+        variantMetadata.addVariantSource(source, formats);
     }
 
     protected StudyConfiguration checkOrCreateStudyConfiguration(boolean forceFetch) throws StorageEngineException {
-        StudyConfiguration studyConfiguration = getStudyConfiguration(forceFetch);
+        return checkOrCreateStudyConfiguration(getStudyConfiguration(forceFetch));
+    }
+
+    protected StudyConfiguration checkOrCreateStudyConfiguration(StudyConfiguration studyConfiguration) throws StorageEngineException {
         if (studyConfiguration == null) {
             logger.info("Creating a new StudyConfiguration");
             int studyId = options.getInt(Options.STUDY_ID.key(), Options.STUDY_ID.defaultValue());
             String studyName = options.getString(Options.STUDY_NAME.key(), Options.STUDY_NAME.defaultValue());
-            checkStudyId(studyId);
+            StudyConfigurationManager.checkStudyId(studyId);
             studyConfiguration = new StudyConfiguration(studyId, studyName);
             options.put(Options.STUDY_CONFIGURATION.key(), studyConfiguration);
         }
         return studyConfiguration;
-    }
-
-    /*
-     * Before load file, the StudyConfiguration has to be updated with the new sample names.
-     * Will read param SAMPLE_IDS like [<sampleName>:<sampleId>,]*
-     * If SAMPLE_IDS is missing, will auto-generate sampleIds
-     * Will fail if:
-     * param SAMPLE_IDS is malformed
-     * any given sampleId is not an integer
-     * any given sampleName is not in the input file
-     * any given sampleName was already in the StudyConfiguration (so, was already loaded)
-     * some sample was missing in the given SAMPLE_IDS param
-     *
-     */
-    public static void checkAndUpdateStudyConfiguration(StudyConfiguration studyConfiguration, int fileId, VariantSource source,
-                                                        ObjectMap options)
-            throws StorageEngineException {
-        if (options.containsKey(Options.SAMPLE_IDS.key()) && !options.getAsStringList(Options.SAMPLE_IDS.key()).isEmpty()) {
-            for (String sampleEntry : options.getAsStringList(Options.SAMPLE_IDS.key())) {
-                String[] split = sampleEntry.split(":");
-                if (split.length != 2) {
-                    throw new StorageEngineException("Param " + sampleEntry + " is malformed");
-                }
-                String sampleName = split[0];
-                int sampleId;
-                try {
-                    sampleId = Integer.parseInt(split[1]);
-                } catch (NumberFormatException e) {
-                    throw new StorageEngineException("SampleId " + split[1] + " is not an integer", e);
-                }
-
-                if (!source.getSamplesPosition().containsKey(sampleName)) {
-                    //ERROR
-                    throw new StorageEngineException("Given sampleName '" + sampleName + "' is not in the input file");
-                } else {
-                    if (!studyConfiguration.getSampleIds().containsKey(sampleName)) {
-                        //Add sample to StudyConfiguration
-                        studyConfiguration.getSampleIds().put(sampleName, sampleId);
-                    } else {
-                        if (studyConfiguration.getSampleIds().get(sampleName) == sampleId) {
-                            //throw new StorageEngineException("Sample " + sampleName + ":" + sampleId
-                            // + " was already loaded. It was in the StudyConfiguration");
-//                          logger.warn("Sample " + sampleName + ":" + sampleId + " was already loaded. It was in the StudyConfiguration");
-                            System.out.println("Empty block");
-                        } else {
-                            throw new StorageEngineException("Sample " + sampleName + ":" + sampleId
-                                    + " was already present. It was in the StudyConfiguration with a different sampleId: "
-                                    + studyConfiguration.getSampleIds().get(sampleName));
-                        }
-                    }
-                }
-            }
-
-            //Check that all samples has a sampleId
-            List<String> missingSamples = new LinkedList<>();
-            for (String sampleName : source.getSamples()) {
-                if (!studyConfiguration.getSampleIds().containsKey(sampleName)) {
-                    missingSamples.add(sampleName);
-                } /*else {
-                    Integer sampleId = studyConfiguration.getSampleIds().get(sampleName);
-                    if (studyConfiguration.getIndexedSamples().contains(sampleId)) {
-                        logger.warn("Sample " + sampleName + ":" + sampleId + " was already loaded.
-                        It was in the StudyConfiguration.indexedSamples");
-                    }
-                }*/
-            }
-            if (!missingSamples.isEmpty()) {
-                throw new StorageEngineException("Samples " + missingSamples.toString() + " has not assigned sampleId");
-            }
-
-        } else {
-            //Find the grader sample Id in the studyConfiguration, in order to add more sampleIds if necessary.
-            int maxId = 0;
-            for (Integer i : studyConfiguration.getSampleIds().values()) {
-                if (i > maxId) {
-                    maxId = i;
-                }
-            }
-            //Assign new sampleIds
-            for (String sample : source.getSamples()) {
-                if (!studyConfiguration.getSampleIds().containsKey(sample)) {
-                    //If the sample was not in the original studyId, a new SampleId is assigned.
-
-                    int sampleId;
-                    int samplesSize = studyConfiguration.getSampleIds().size();
-                    Integer samplePosition = source.getSamplesPosition().get(sample);
-                    if (!studyConfiguration.getSampleIds().containsValue(samplePosition)) {
-                        //1- Use with the SamplePosition
-                        sampleId = samplePosition;
-                    } else if (!studyConfiguration.getSampleIds().containsValue(samplesSize)) {
-                        //2- Use the number of samples in the StudyConfiguration.
-                        sampleId = samplesSize;
-                    } else {
-                        //3- Use the maxId
-                        sampleId = maxId + 1;
-                    }
-                    studyConfiguration.getSampleIds().put(sample, sampleId);
-                    if (sampleId > maxId) {
-                        maxId = sampleId;
-                    }
-                }
-            }
-        }
-
-        if (studyConfiguration.getSamplesInFiles().containsKey(fileId)) {
-            LinkedHashSet<Integer> sampleIds = studyConfiguration.getSamplesInFiles().get(fileId);
-            List<String> missingSamples = new LinkedList<>();
-            for (String sampleName : source.getSamples()) {
-                if (!sampleIds.contains(studyConfiguration.getSampleIds().get(sampleName))) {
-                    missingSamples.add(sampleName);
-                }
-            }
-            if (!missingSamples.isEmpty()) {
-                throw new StorageEngineException("Samples " + missingSamples.toString() + " were not in file " + fileId);
-            }
-            if (sampleIds.size() != source.getSamples().size()) {
-                throw new StorageEngineException("Incorrect number of samples in file " + fileId);
-            }
-        } else {
-            LinkedHashSet<Integer> sampleIdsInFile = new LinkedHashSet<>(source.getSamples().size());
-            for (String sample : source.getSamples()) {
-                sampleIdsInFile.add(studyConfiguration.getSampleIds().get(sample));
-            }
-            studyConfiguration.getSamplesInFiles().put(fileId, sampleIdsInFile);
-        }
     }
 
     @Override
@@ -761,7 +663,7 @@ public abstract class VariantStoragePipeline implements StoragePipeline {
         long lock = dbAdaptor.getStudyConfigurationManager().lockStudy(studyId);
 
         // Check loaded variants BEFORE updating the StudyConfiguration
-        checkLoadedVariants(input, fileIds, getStudyConfiguration(), options);
+        checkLoadedVariants(fileIds, getStudyConfiguration());
 
         StudyConfiguration studyConfiguration;
         try {
@@ -800,6 +702,7 @@ public abstract class VariantStoragePipeline implements StoragePipeline {
             defaultCohortId = studyConfiguration.getCohortIds().values().stream().max(Integer::compareTo).orElse(1);
             studyConfiguration.getCohortIds().put(StudyEntry.DEFAULT_COHORT, defaultCohortId);
         }
+        logger.info("Add loaded samples to Default Cohort \"" + defaultCohortName + '"');
         studyConfiguration.getCohorts().put(defaultCohortId, indexedSamples.values());
 
     }
@@ -815,13 +718,13 @@ public abstract class VariantStoragePipeline implements StoragePipeline {
         }
     }
 
-    protected abstract void checkLoadedVariants(URI input, int fileId, StudyConfiguration studyConfiguration, ObjectMap options)
+    protected abstract void checkLoadedVariants(int fileId, StudyConfiguration studyConfiguration)
             throws StorageEngineException;
 
-    protected void checkLoadedVariants(URI input, List<Integer> fileIds, StudyConfiguration studyConfiguration, ObjectMap options)
+    protected void checkLoadedVariants(List<Integer> fileIds, StudyConfiguration studyConfiguration)
             throws StorageEngineException {
         for (Integer fileId : fileIds) {
-            checkLoadedVariants(input, fileId, studyConfiguration, options);
+            checkLoadedVariants(fileId, studyConfiguration);
         }
     }
 
@@ -854,157 +757,36 @@ public abstract class VariantStoragePipeline implements StoragePipeline {
      * @throws StorageEngineException If the study configuration is not found
      */
     public final StudyConfiguration getStudyConfiguration(boolean forceFetch) throws StorageEngineException {
-        if (forceFetch) {
-            options.remove(Options.STUDY_CONFIGURATION.key());
-        }
-        return getStudyConfiguration(options);
-    }
-
-    public final StudyConfiguration getStudyConfiguration(ObjectMap params) throws StorageEngineException {
-        if (params.containsKey(Options.STUDY_CONFIGURATION.key())) {
-            return params.get(Options.STUDY_CONFIGURATION.key(), StudyConfiguration.class);
+        // TODO: should StudyConfiguration be a class field?
+        if (!forceFetch && options.containsKey(Options.STUDY_CONFIGURATION.key())) {
+            return options.get(Options.STUDY_CONFIGURATION.key(), StudyConfiguration.class);
         } else {
             StudyConfigurationManager studyConfigurationManager = dbAdaptor.getStudyConfigurationManager();
             StudyConfiguration studyConfiguration;
-            if (!StringUtils.isEmpty(params.getString(Options.STUDY_NAME.key()))
-                    && !params.getString(Options.STUDY_NAME.key()).equals(Options.STUDY_NAME.defaultValue())) {
-                studyConfiguration = studyConfigurationManager.getStudyConfiguration(params.getString(Options.STUDY_NAME.key()),
-                        new QueryOptions(params)).first();
-                if (studyConfiguration != null && params.containsKey(Options.STUDY_ID.key())) {
+            if (!StringUtils.isEmpty(options.getString(Options.STUDY_NAME.key()))
+                    && !options.getString(Options.STUDY_NAME.key()).equals(Options.STUDY_NAME.defaultValue())) {
+                studyConfiguration = studyConfigurationManager.getStudyConfiguration(options.getString(Options.STUDY_NAME.key()),
+                        new QueryOptions(options)).first();
+                if (studyConfiguration != null && options.containsKey(Options.STUDY_ID.key())) {
                     //Check if StudyId matches
-                    if (studyConfiguration.getStudyId() != params.getInt(Options.STUDY_ID.key())) {
+                    if (studyConfiguration.getStudyId() != options.getInt(Options.STUDY_ID.key())) {
                         throw new StorageEngineException("Invalid StudyConfiguration. StudyId mismatches");
                     }
                 }
-            } else if (params.containsKey(Options.STUDY_ID.key())) {
-                studyConfiguration = studyConfigurationManager.getStudyConfiguration(params.getInt(Options.STUDY_ID.key()),
-                        new QueryOptions(params)).first();
+            } else if (options.containsKey(Options.STUDY_ID.key())) {
+                studyConfiguration = studyConfigurationManager.getStudyConfiguration(options.getInt(Options.STUDY_ID.key()),
+                        new QueryOptions(options)).first();
             } else {
                 throw new StorageEngineException("Unable to get StudyConfiguration. Missing studyId or studyName");
             }
-            params.put(Options.STUDY_CONFIGURATION.key(), studyConfiguration);
+            options.put(Options.STUDY_CONFIGURATION.key(), studyConfiguration);
             return studyConfiguration;
         }
     }
 
 
-    /**
-     * Check if the file(name,id) can be added to the StudyConfiguration.
-     *
-     * Will fail if:
-     * fileName was already in the studyConfiguration.fileIds with a different fileId
-     * fileId was already in the studyConfiguration.fileIds with a different fileName
-     * fileId was already in the studyConfiguration.indexedFiles
-     *
-     * @param studyConfiguration Study Configuration
-     * @param fileId    FileId to add. If negative, will generate a new one
-     * @param fileName  File name
-     * @return fileId related to that file.
-     * @throws StorageEngineException if the file is not valid for being loaded
-     */
-    protected int checkNewFile(StudyConfiguration studyConfiguration, int fileId, String fileName) throws StorageEngineException {
-        Map<Integer, String> idFiles = StudyConfiguration.inverseMap(studyConfiguration.getFileIds());
-
-        if (fileId < 0) {
-            if (studyConfiguration.getFileIds().containsKey(fileName)) {
-                fileId = studyConfiguration.getFileIds().get(fileName);
-            } else {
-                fileId = studyConfiguration.getFileIds().values().stream().max(Integer::compareTo).orElse(-1) + 1;
-                studyConfiguration.getFileIds().put(fileName, fileId);
-            }
-            //throw new StorageEngineException("Invalid fileId " + fileId + " for file " + fileName + ". FileId must be positive.");
-        }
-
-        if (studyConfiguration.getFileIds().containsKey(fileName)) {
-            if (studyConfiguration.getFileIds().get(fileName) != fileId) {
-                throw new StorageEngineException("File " + fileName + " (" + fileId + ") "
-                        + "has a different fileId in the study "
-                        + studyConfiguration.getStudyName() + " (" + studyConfiguration.getStudyId() + ") : "
-                        + fileName + " (" + studyConfiguration.getFileIds().get(fileName) + ")");
-            }
-        }
-        if (idFiles.containsKey(fileId)) {
-            if (!idFiles.get(fileId).equals(fileName)) {
-                throw new StorageEngineException("File " + fileName + " (" + fileId + ") "
-                        + "has a different fileName in the StudyConfiguration: "
-                        + idFiles.get(fileId) + " (" + fileId + ")");
-            }
-        }
-
-        if (studyConfiguration.getIndexedFiles().contains(fileId)) {
-            throw StorageEngineException.alreadyLoaded(fileId, fileName);
-        }
-        return fileId;
-    }
-
-    /**
-     * Check if the StudyConfiguration is correct.
-     *
-     * @param studyConfiguration StudyConfiguration to check
-     * @throws StorageEngineException If object is null
-     */
-    public static void checkStudyConfiguration(StudyConfiguration studyConfiguration) throws StorageEngineException {
-        if (studyConfiguration == null) {
-            throw new StorageEngineException("StudyConfiguration is null");
-        }
-        checkStudyId(studyConfiguration.getStudyId());
-        if (studyConfiguration.getFileIds().size() != StudyConfiguration.inverseMap(studyConfiguration.getFileIds()).size()) {
-            throw new StorageEngineException("StudyConfiguration has duplicated fileIds");
-        }
-        if (studyConfiguration.getCohortIds().size() != StudyConfiguration.inverseMap(studyConfiguration.getCohortIds()).size()) {
-            throw new StorageEngineException("StudyConfiguration has duplicated cohortIds");
-        }
-    }
-
-
-    public static void checkStudyId(int studyId) throws StorageEngineException {
-        if (studyId < 0) {
-            throw new StorageEngineException("Invalid studyId : " + studyId);
-        }
-    }
-
     public Thread newShutdownHook(String jobOperationName, List<Integer> files) {
-        return new Thread(() -> {
-            try {
-                logger.error("Shutdown hook!");
-                setStatus(BatchFileOperation.Status.ERROR, jobOperationName, files);
-            } catch (StorageEngineException e) {
-                e.printStackTrace();
-                throw new RuntimeException(e);
-            }
-        });
-    }
-
-    public void setStatus(BatchFileOperation.Status status, String operationName, List<Integer> files) throws StorageEngineException {
-        int studyId = getStudyId();
-        long lock = dbAdaptor.getStudyConfigurationManager().lockStudy(studyId);
-        try {
-            StudyConfiguration studyConfiguration = getStudyConfiguration(true);
-            secureSetStatus(studyConfiguration, status, operationName, files);
-            dbAdaptor.getStudyConfigurationManager().updateStudyConfiguration(studyConfiguration, null);
-        } finally {
-            dbAdaptor.getStudyConfigurationManager().unLockStudy(studyId, lock);
-        }
-    }
-
-    public BatchFileOperation.Status secureSetStatus(StudyConfiguration studyConfiguration, BatchFileOperation.Status status,
-                                                        String operationName, List<Integer> files)
-            throws StorageEngineException {
-        List<BatchFileOperation> batches = studyConfiguration.getBatches();
-        BatchFileOperation operation = null;
-        for (int i = batches.size() - 1; i >= 0; i--) {
-            operation = batches.get(i);
-            if (operation.getOperationName().equals(operationName) && operation.getFileIds().equals(files)) {
-                break;
-            }
-            operation = null;
-        }
-        if (operation == null) {
-            throw new IllegalStateException("Batch operation " + operationName + " for files " + files + " not found!");
-        }
-        BatchFileOperation.Status previousStatus = operation.currentStatus();
-        operation.addStatus(Calendar.getInstance().getTime(), status);
-        return previousStatus;
+        return getStudyConfigurationManager().buildShutdownHook(jobOperationName, getStudyId(), files);
     }
 
     public VariantDBAdaptor getDBAdaptor() {
@@ -1017,5 +799,9 @@ public abstract class VariantStoragePipeline implements StoragePipeline {
 
     public ObjectMap getOptions() {
         return options;
+    }
+
+    public StudyConfigurationManager getStudyConfigurationManager() {
+        return getDBAdaptor().getStudyConfigurationManager();
     }
 }

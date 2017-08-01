@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -32,7 +32,7 @@ import org.opencb.opencga.storage.core.exceptions.StorageEngineException;
 import org.opencb.opencga.storage.core.manager.variant.CatalogStudyConfigurationFactory;
 import org.opencb.opencga.storage.core.metadata.StudyConfiguration;
 import org.opencb.opencga.storage.core.metadata.StudyConfigurationManager;
-import org.opencb.opencga.storage.core.variant.adaptors.VariantDBAdaptor;
+import org.opencb.opencga.storage.core.variant.VariantStorageEngine;
 import org.slf4j.Logger;
 
 import java.io.IOException;
@@ -113,17 +113,15 @@ public abstract class StorageOperation {
             throws IOException, CatalogException, StorageEngineException {
 
         CatalogStudyConfigurationFactory studyConfigurationFactory = new CatalogStudyConfigurationFactory(catalogManager);
-        try (VariantDBAdaptor dbAdaptor = StorageEngineFactory.get().getVariantStorageEngine(dataStore.getStorageEngine())
-                .getDBAdaptor(dataStore.getDbName());
-             StudyConfigurationManager studyConfigurationManager = dbAdaptor.getStudyConfigurationManager()) {
-
+        StudyConfigurationManager studyConfigurationManager = getVariantStorageEngine(dataStore).getStudyConfigurationManager();
+        try {
             // Update StudyConfiguration. Add new elements and so
             studyConfigurationFactory.updateStudyConfigurationFromCatalog(studyId, studyConfigurationManager, sessionId);
             StudyConfiguration studyConfiguration = studyConfigurationManager.getStudyConfiguration((int) studyId, null).first();
             // Update Catalog file and cohort status.
             studyConfigurationFactory.updateCatalogFromStudyConfiguration(studyConfiguration, null, sessionId);
             return studyConfiguration;
-        } catch (StorageEngineException | ClassNotFoundException | InstantiationException | IllegalAccessException e) {
+        } catch (StorageEngineException e) {
             throw new StorageEngineException("Unable to update StudyConfiguration", e);
         }
     }
@@ -214,26 +212,49 @@ public abstract class StorageOperation {
         QueryOptions queryOptions = new QueryOptions(QueryOptions.INCLUDE,
                 Arrays.asList(ProjectDBAdaptor.QueryParams.ALIAS.key(), ProjectDBAdaptor.QueryParams.DATASTORES.key()));
         Project project = catalogManager.getProjectManager().get(projectId, queryOptions, sessionId).first();
-        if (project != null && project.getDataStores() != null && project.getDataStores().containsKey(bioformat)) {
+        if (project.getDataStores() != null && project.getDataStores().containsKey(bioformat)) {
             dataStore = project.getDataStores().get(bioformat);
         } else { //get default datastore
             //Must use the UserByStudyId instead of the file owner.
             String userId = catalogManager.getProjectManager().getUserId(projectId);
-            String alias = project.getAlias();
+            // Replace possible dots at the userId. Usually a special character in almost all databases. See #532
+            userId = userId.replace('.', '_');
 
-            String prefix;
-            if (StringUtils.isNotEmpty(catalogManager.getConfiguration().getDatabasePrefix())) {
-                prefix = catalogManager.getConfiguration().getDatabasePrefix();
-                if (!prefix.endsWith("_")) {
-                    prefix += "_";
-                }
-            } else {
-                prefix = "opencga_";
-            }
+            String databasePrefix = catalogManager.getConfiguration().getDatabasePrefix();
 
-            String dbName = prefix + userId + '_' + alias;
+            String dbName = buildDatabaseName(databasePrefix, userId, project.getAlias());
             dataStore = new DataStore(StorageEngineFactory.get().getDefaultStorageManagerName(), dbName);
         }
         return dataStore;
+    }
+
+    protected VariantStorageEngine getVariantStorageEngine(DataStore dataStore) throws StorageEngineException {
+        VariantStorageEngine variantStorageEngine;
+        try {
+            variantStorageEngine = storageEngineFactory.getVariantStorageEngine(dataStore.getStorageEngine(), dataStore.getDbName());
+        } catch (ClassNotFoundException | IllegalAccessException | InstantiationException e) {
+            throw new StorageEngineException("Unable to create StorageEngine", e);
+        }
+        return variantStorageEngine;
+    }
+
+    public static String buildDatabaseName(String databasePrefix, String userId, String alias) {
+        String prefix;
+        if (StringUtils.isNotEmpty(databasePrefix)) {
+            prefix = databasePrefix;
+            if (!prefix.endsWith("_")) {
+                prefix += "_";
+            }
+        } else {
+            prefix = "opencga_";
+        }
+        // Project alias contains the userId:
+        // userId@projectAlias
+        int idx = alias.indexOf('@');
+        if (idx >= 0) {
+            alias = alias.substring(idx + 1);
+        }
+
+        return prefix + userId + '_' + alias;
     }
 }

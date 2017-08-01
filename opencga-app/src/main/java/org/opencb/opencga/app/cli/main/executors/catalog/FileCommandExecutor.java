@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -121,20 +121,8 @@ public class FileCommandExecutor extends OpencgaCommandExecutor {
             case "acl":
                 queryResponse = aclCommandExecutor.acls(filesCommandOptions.aclsCommandOptions, openCGAClient.getFileClient());
                 break;
-            case "acl-create":
-                queryResponse = aclCommandExecutor.aclsCreate(filesCommandOptions.aclsCreateCommandOptions, openCGAClient.getFileClient());
-                break;
-            case "acl-member-delete":
-                queryResponse = aclCommandExecutor.aclMemberDelete(filesCommandOptions.aclsMemberDeleteCommandOptions,
-                        openCGAClient.getFileClient());
-                break;
-            case "acl-member-info":
-                queryResponse = aclCommandExecutor.aclMemberInfo(filesCommandOptions.aclsMemberInfoCommandOptions,
-                        openCGAClient.getFileClient());
-                break;
-            case "acl-member-update":
-                queryResponse = aclCommandExecutor.aclMemberUpdate(filesCommandOptions.aclsMemberUpdateCommandOptions,
-                        openCGAClient.getFileClient());
+            case "acl-update":
+                queryResponse = updateAcl();
                 break;
             default:
                 logger.error("Subcommand not valid");
@@ -151,7 +139,7 @@ public class FileCommandExecutor extends OpencgaCommandExecutor {
         if (filesCommandOptions.createFolderCommandOptions.parents){
             params.put("parents",filesCommandOptions.createFolderCommandOptions.parents);
         }
-        return openCGAClient.getFileClient().createFolder(filesCommandOptions.createFolderCommandOptions.study,
+        return openCGAClient.getFileClient().createFolder(resolveStudy(filesCommandOptions.createFolderCommandOptions.study),
                 filesCommandOptions.createFolderCommandOptions.folder, params);
     }
 
@@ -160,7 +148,7 @@ public class FileCommandExecutor extends OpencgaCommandExecutor {
         logger.debug("Getting file information");
 
         QueryOptions queryOptions = new QueryOptions();
-        queryOptions.putIfNotEmpty(FileDBAdaptor.QueryParams.STUDY.key(), filesCommandOptions.infoCommandOptions.study);
+        queryOptions.putIfNotEmpty(FileDBAdaptor.QueryParams.STUDY.key(), resolveStudy(filesCommandOptions.infoCommandOptions.study));
         queryOptions.putIfNotEmpty(QueryOptions.INCLUDE, filesCommandOptions.infoCommandOptions.dataModelOptions.include);
         queryOptions.putIfNotEmpty(QueryOptions.EXCLUDE, filesCommandOptions.infoCommandOptions.dataModelOptions.exclude);
         queryOptions.put("lazy", !filesCommandOptions.infoCommandOptions.noLazy);
@@ -171,7 +159,7 @@ public class FileCommandExecutor extends OpencgaCommandExecutor {
         logger.debug("Downloading file");
 
         ObjectMap params = new ObjectMap();
-        params.putIfNotEmpty(FileDBAdaptor.QueryParams.STUDY.key(), filesCommandOptions.downloadCommandOptions.study);
+        params.putIfNotEmpty(FileDBAdaptor.QueryParams.STUDY.key(), resolveStudy(filesCommandOptions.downloadCommandOptions.study));
         return openCGAClient.getFileClient().download(filesCommandOptions.downloadCommandOptions.file, params);
     }
 
@@ -181,7 +169,7 @@ public class FileCommandExecutor extends OpencgaCommandExecutor {
         ObjectMap params = new ObjectMap();
         params.put("ignoreCase", filesCommandOptions.grepCommandOptions.ignoreCase);
         params.put("multi", filesCommandOptions.grepCommandOptions.multi);
-        params.putIfNotEmpty(FileDBAdaptor.QueryParams.STUDY.key(), filesCommandOptions.grepCommandOptions.study);
+        params.putIfNotEmpty(FileDBAdaptor.QueryParams.STUDY.key(), resolveStudy(filesCommandOptions.grepCommandOptions.study));
         return openCGAClient.getFileClient().grep(filesCommandOptions.grepCommandOptions.file,
                 filesCommandOptions.grepCommandOptions.pattern, params);
     }
@@ -191,7 +179,7 @@ public class FileCommandExecutor extends OpencgaCommandExecutor {
 
         //FIXME check and put the correct format for type and bioformat. See StudiesCommandExecutor search param type. Is better
         Query query = new Query();
-        query.putIfNotEmpty(FileDBAdaptor.QueryParams.STUDY.key(), filesCommandOptions.searchCommandOptions.study);
+        query.putIfNotEmpty(FileDBAdaptor.QueryParams.STUDY.key(), resolveStudy(filesCommandOptions.searchCommandOptions.study));
         query.putIfNotEmpty(FileDBAdaptor.QueryParams.NAME.key(), filesCommandOptions.searchCommandOptions.name);
         query.putIfNotEmpty(FileDBAdaptor.QueryParams.PATH.key(), filesCommandOptions.searchCommandOptions.path);
         query.putIfNotNull(FileDBAdaptor.QueryParams.TYPE.key(), filesCommandOptions.searchCommandOptions.type);
@@ -204,27 +192,30 @@ public class FileCommandExecutor extends OpencgaCommandExecutor {
         query.putIfNotEmpty(FileDBAdaptor.QueryParams.MODIFICATION_DATE.key(), filesCommandOptions.groupByCommandOptions.modificationDate);
         query.putIfNotEmpty(FileDBAdaptor.QueryParams.DESCRIPTION.key(), filesCommandOptions.searchCommandOptions.description);
         query.putIfNotEmpty(FileDBAdaptor.QueryParams.SIZE.key(), filesCommandOptions.searchCommandOptions.size);
-        query.putIfNotEmpty(FileDBAdaptor.QueryParams.SAMPLE_IDS.key(), filesCommandOptions.searchCommandOptions.samples);
+        query.putIfNotEmpty(FileDBAdaptor.QueryParams.SAMPLES.key(), filesCommandOptions.searchCommandOptions.samples);
         query.putIfNotEmpty(FileDBAdaptor.QueryParams.JOB_ID.key(), filesCommandOptions.searchCommandOptions.jobId);
         query.putIfNotEmpty(FileDBAdaptor.QueryParams.ATTRIBUTES.key(), filesCommandOptions.searchCommandOptions.attributes);
         query.putIfNotEmpty(FileDBAdaptor.QueryParams.NATTRIBUTES.key(), filesCommandOptions.searchCommandOptions.nattributes);
-        query.putIfNotEmpty(FileDBAdaptor.QueryParams.SAMPLE_IDS.key(), filesCommandOptions.searchCommandOptions.samples);
 
-        QueryOptions queryOptions = new QueryOptions();
-        queryOptions.putIfNotEmpty(QueryOptions.INCLUDE, filesCommandOptions.searchCommandOptions.dataModelOptions.include);
-        queryOptions.putIfNotEmpty(QueryOptions.EXCLUDE, filesCommandOptions.searchCommandOptions.dataModelOptions.exclude);
-        queryOptions.put(QueryOptions.LIMIT, filesCommandOptions.searchCommandOptions.numericOptions.limit);
-        queryOptions.put(QueryOptions.SKIP, filesCommandOptions.searchCommandOptions.numericOptions.skip);
-        queryOptions.put("count", filesCommandOptions.searchCommandOptions.numericOptions.count);
+        if (filesCommandOptions.searchCommandOptions.numericOptions.count) {
+            return openCGAClient.getFileClient().count(query);
+        } else {
+            QueryOptions queryOptions = new QueryOptions();
+            queryOptions.putIfNotEmpty(QueryOptions.INCLUDE, filesCommandOptions.searchCommandOptions.dataModelOptions.include);
+            queryOptions.putIfNotEmpty(QueryOptions.EXCLUDE, filesCommandOptions.searchCommandOptions.dataModelOptions.exclude);
+            queryOptions.put(QueryOptions.LIMIT, filesCommandOptions.searchCommandOptions.numericOptions.limit);
+            queryOptions.put(QueryOptions.SKIP, filesCommandOptions.searchCommandOptions.numericOptions.skip);
+            queryOptions.put("lazy", !filesCommandOptions.infoCommandOptions.noLazy);
 
-        return openCGAClient.getFileClient().search(query,queryOptions);
+            return openCGAClient.getFileClient().search(query, queryOptions);
+        }
     }
 
     private QueryResponse<File> list() throws CatalogException, IOException {
         logger.debug("Listing files in folder");
 
         ObjectMap params = new ObjectMap();
-        params.putIfNotEmpty(FileDBAdaptor.QueryParams.STUDY.key(), filesCommandOptions.listCommandOptions.study);
+        params.putIfNotEmpty(FileDBAdaptor.QueryParams.STUDY.key(), resolveStudy(filesCommandOptions.listCommandOptions.study));
         params.putIfNotEmpty(QueryOptions.INCLUDE, filesCommandOptions.listCommandOptions.dataModelOptions.include);
         params.putIfNotEmpty(QueryOptions.EXCLUDE, filesCommandOptions.listCommandOptions.dataModelOptions.exclude);
         params.put(QueryOptions.LIMIT, filesCommandOptions.listCommandOptions.numericOptions.limit);
@@ -264,7 +255,7 @@ public class FileCommandExecutor extends OpencgaCommandExecutor {
         logger.debug("Obtain a tree view of the files and folders within a folder");
 
         ObjectMap params = new ObjectMap();
-        params.putIfNotNull(FileDBAdaptor.QueryParams.STUDY.key(), filesCommandOptions.treeCommandOptions.study);
+        params.putIfNotNull(FileDBAdaptor.QueryParams.STUDY.key(), resolveStudy(filesCommandOptions.treeCommandOptions.study));
         params.putIfNotNull("maxDepth", filesCommandOptions.treeCommandOptions.maxDepth);
         params.putIfNotEmpty(QueryOptions.INCLUDE, filesCommandOptions.treeCommandOptions.dataModelOptions.include);
         params.putIfNotEmpty(QueryOptions.EXCLUDE, filesCommandOptions.treeCommandOptions.dataModelOptions.exclude);
@@ -295,12 +286,12 @@ public class FileCommandExecutor extends OpencgaCommandExecutor {
         params.putIfNotEmpty(FileDBAdaptor.QueryParams.DESCRIPTION.key(), filesCommandOptions.updateCommandOptions.description);
         params.putIfNotEmpty(FileDBAdaptor.QueryParams.ATTRIBUTES.key(), filesCommandOptions.updateCommandOptions.attributes);
         params.putIfNotEmpty(FileDBAdaptor.QueryParams.STATS.key(), filesCommandOptions.updateCommandOptions.stats);
-        params.putIfNotEmpty(FileDBAdaptor.QueryParams.SAMPLE_IDS.key(), filesCommandOptions.updateCommandOptions.sampleIds);
+        params.putIfNotEmpty(FileDBAdaptor.QueryParams.SAMPLES.key(), filesCommandOptions.updateCommandOptions.sampleIds);
         params.putIfNotEmpty(FileDBAdaptor.QueryParams.JOB_ID.key(), filesCommandOptions.updateCommandOptions.jobId);
         params.putIfNotEmpty(FileDBAdaptor.QueryParams.PATH.key(), filesCommandOptions.updateCommandOptions.path);
         params.putIfNotEmpty(FileDBAdaptor.QueryParams.NAME.key(), filesCommandOptions.updateCommandOptions.name);
         return openCGAClient.getFileClient().update(filesCommandOptions.updateCommandOptions.file,
-                filesCommandOptions.updateCommandOptions.study, params);
+                resolveStudy(filesCommandOptions.updateCommandOptions.study), params);
     }
 
     private QueryResponse<File> upload() throws CatalogException, IOException {
@@ -429,102 +420,27 @@ public class FileCommandExecutor extends OpencgaCommandExecutor {
                 filesCommandOptions.groupByCommandOptions.modificationDate);
         queryOptions.putIfNotEmpty(FileDBAdaptor.QueryParams.DESCRIPTION.key(), filesCommandOptions.groupByCommandOptions.description);
         queryOptions.putIfNotEmpty(FileDBAdaptor.QueryParams.SIZE.key(), filesCommandOptions.groupByCommandOptions.size);
-        queryOptions.putIfNotEmpty(FileDBAdaptor.QueryParams.SAMPLE_IDS.key(), filesCommandOptions.groupByCommandOptions.sampleIds);
+        queryOptions.putIfNotEmpty(FileDBAdaptor.QueryParams.SAMPLES.key(), filesCommandOptions.groupByCommandOptions.sampleIds);
         queryOptions.putIfNotEmpty(FileDBAdaptor.QueryParams.JOB_ID.key(), filesCommandOptions.groupByCommandOptions.job);
         queryOptions.putIfNotEmpty(FileDBAdaptor.QueryParams.ATTRIBUTES.key(), filesCommandOptions.groupByCommandOptions.attributes);
         queryOptions.putIfNotEmpty(FileDBAdaptor.QueryParams.NATTRIBUTES.key(), filesCommandOptions.groupByCommandOptions.nattributes);
-        return openCGAClient.getFileClient().groupBy(filesCommandOptions.groupByCommandOptions.study,
+        return openCGAClient.getFileClient().groupBy(resolveStudy(filesCommandOptions.groupByCommandOptions.study),
                 filesCommandOptions.groupByCommandOptions.fields, queryOptions);
     }
 
-//    private QueryResponse variants() throws CatalogException, IOException {
-//        logger.debug("Fetch variants from a VCF/gVCF file");
-//
-//        QueryOptions queryOptions = new QueryOptions();
-//        queryOptions.putIfNotEmpty("ids", filesCommandOptions.variantsCommandOptions.ids);
-//        queryOptions.putIfNotEmpty(FileDBAdaptor.QueryParams.STUDY.key(), filesCommandOptions.variantsCommandOptions.study);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.REGION.key(),
-//                filesCommandOptions.variantsCommandOptions.region);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.CHROMOSOME.key(),
-//                filesCommandOptions.variantsCommandOptions.chromosome);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.GENE.key(), filesCommandOptions.variantsCommandOptions.gene);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.TYPE.key(), filesCommandOptions.variantsCommandOptions.type);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.REFERENCE.key(),
-//                filesCommandOptions.variantsCommandOptions.reference);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.ALTERNATE.key(),
-//                filesCommandOptions.variantsCommandOptions.alternate);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.RETURNED_STUDIES.key(),
-//                filesCommandOptions.variantsCommandOptions.returnedStudies);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.RETURNED_SAMPLES.key(),
-//                filesCommandOptions.variantsCommandOptions.returnedSamples);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.RETURNED_FILES.key(),
-//                filesCommandOptions.variantsCommandOptions.returnedFiles);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.FILES.key(),
-//                filesCommandOptions.variantsCommandOptions.files);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.STATS_MAF.key(),
-//                filesCommandOptions.variantsCommandOptions.maf);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.STATS_MGF.key(),
-//                filesCommandOptions.variantsCommandOptions.mgf);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.MISSING_ALLELES.key(),
-//                filesCommandOptions.variantsCommandOptions.missingAlleles);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.MISSING_GENOTYPES.key(),
-//                filesCommandOptions.variantsCommandOptions.missingGenotypes);
-////        queryOptions.put(CatalogVariantDBAdaptor.VariantQueryParams.ANNOTATION_EXISTS.key(),
-////                filesCommandOptions.variantsCommandOptions.annotationExists);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.GENOTYPE.key(),
-//                filesCommandOptions.variantsCommandOptions.genotype);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.ANNOT_CONSEQUENCE_TYPE.key(),
-//                filesCommandOptions.variantsCommandOptions.annot_ct);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.ANNOT_XREF.key(),
-//                filesCommandOptions.variantsCommandOptions.annot_xref);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.ANNOT_BIOTYPE.key(),
-//                filesCommandOptions.variantsCommandOptions.annot_biotype);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.ANNOT_POLYPHEN.key(),
-//                filesCommandOptions.variantsCommandOptions.polyphen);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.ANNOT_SIFT.key(), filesCommandOptions.variantsCommandOptions.sift);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.ANNOT_CONSERVATION.key(),
-//                filesCommandOptions.variantsCommandOptions.conservation);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.ANNOT_POPULATION_MINOR_ALLELE_FREQUENCY.key(),
-//                filesCommandOptions.variantsCommandOptions.annotPopulationMaf);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.ANNOT_POPULATION_ALTERNATE_FREQUENCY.key(),
-//                filesCommandOptions.variantsCommandOptions.alternate_frequency);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.ANNOT_POPULATION_REFERENCE_FREQUENCY.key(),
-//                filesCommandOptions.variantsCommandOptions.reference_frequency);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.ANNOT_TRANSCRIPTION_FLAGS.key(),
-//                filesCommandOptions.variantsCommandOptions.transcriptionFlags);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.ANNOT_GENE_TRAITS_ID.key(),
-//                filesCommandOptions.variantsCommandOptions.geneTraitId);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.ANNOT_GENE_TRAITS_NAME.key(),
-//                filesCommandOptions.variantsCommandOptions.geneTraitName);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.ANNOT_HPO.key(),
-//                filesCommandOptions.variantsCommandOptions.hpo);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.ANNOT_GO.key(),
-//                filesCommandOptions.variantsCommandOptions.go);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.ANNOT_EXPRESSION.key(),
-//                filesCommandOptions.variantsCommandOptions.expression);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.ANNOT_PROTEIN_KEYWORDS.key(),
-//                filesCommandOptions.variantsCommandOptions.proteinKeyword);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.ANNOT_DRUG.key(),
-//                filesCommandOptions.variantsCommandOptions.drug);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.ANNOT_FUNCTIONAL_SCORE.key(),
-//                filesCommandOptions.variantsCommandOptions.functionalScore);
-//        queryOptions.putIfNotEmpty(CatalogVariantDBAdaptor.VariantQueryParams.UNKNOWN_GENOTYPE.key(),
-//                filesCommandOptions.variantsCommandOptions.unknownGenotype);
-//        queryOptions.put("samplesMetadata", filesCommandOptions.variantsCommandOptions.samplesMetadata);
-//        queryOptions.put(QueryOptions.SORT, filesCommandOptions.variantsCommandOptions.sort);
-//        queryOptions.putIfNotEmpty("groupBy", filesCommandOptions.variantsCommandOptions.groupBy);
-//        queryOptions.put("histogram", filesCommandOptions.variantsCommandOptions.histogram);
-//        queryOptions.putIfNotEmpty("interval", filesCommandOptions.variantsCommandOptions.interval);
-//        queryOptions.putIfNotEmpty("merge", filesCommandOptions.variantsCommandOptions.merge);
-//        queryOptions.putIfNotEmpty(QueryOptions.INCLUDE, filesCommandOptions.variantsCommandOptions.include);
-//        queryOptions.putIfNotEmpty(QueryOptions.EXCLUDE, filesCommandOptions.variantsCommandOptions.exclude);
-//        queryOptions.putIfNotEmpty(QueryOptions.LIMIT, filesCommandOptions.variantsCommandOptions.limit);
-//        queryOptions.putIfNotEmpty(QueryOptions.SKIP, filesCommandOptions.variantsCommandOptions.skip);
-//
-//        queryOptions.put("count", filesCommandOptions.variantsCommandOptions.count);
-//
-//        return openCGAClient.getFileClient().getVariants(filesCommandOptions.variantsCommandOptions.file, queryOptions);
-//    }
+    private QueryResponse<FileAclEntry> updateAcl() throws IOException, CatalogException {
+        FileCommandOptions.FileAclCommandOptions.AclsUpdateCommandOptions commandOptions = filesCommandOptions.aclsUpdateCommandOptions;
 
+        ObjectMap queryParams = new ObjectMap();
+        queryParams.putIfNotNull("study", commandOptions.study);
+
+        ObjectMap bodyParams = new ObjectMap();
+        bodyParams.putIfNotNull("permissions", commandOptions.permissions);
+        bodyParams.putIfNotNull("action", commandOptions.action);
+        bodyParams.putIfNotNull("file", commandOptions.id);
+        bodyParams.putIfNotNull("sample", commandOptions.sample);
+
+        return openCGAClient.getFileClient().updateAcl(commandOptions.memberId, queryParams, bodyParams);
+    }
 
 }

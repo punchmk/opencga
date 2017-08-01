@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,18 +27,22 @@ import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.io.compress.Compression.Algorithm;
 import org.opencb.biodata.models.variant.VariantSource;
 import org.opencb.commons.datastore.core.ObjectMap;
+import org.opencb.commons.datastore.core.Query;
+import org.opencb.commons.datastore.core.QueryOptions;
 import org.opencb.opencga.storage.core.StoragePipelineResult;
 import org.opencb.opencga.storage.core.config.DatabaseCredentials;
 import org.opencb.opencga.storage.core.config.StorageEngineConfiguration;
 import org.opencb.opencga.storage.core.config.StorageEtlConfiguration;
-import org.opencb.opencga.storage.core.exceptions.StoragePipelineException;
 import org.opencb.opencga.storage.core.exceptions.StorageEngineException;
+import org.opencb.opencga.storage.core.exceptions.StoragePipelineException;
 import org.opencb.opencga.storage.core.metadata.BatchFileOperation;
 import org.opencb.opencga.storage.core.metadata.StudyConfiguration;
 import org.opencb.opencga.storage.core.metadata.StudyConfigurationManager;
-import org.opencb.opencga.storage.core.variant.VariantStoragePipeline;
+import org.opencb.opencga.storage.core.utils.CellBaseUtils;
 import org.opencb.opencga.storage.core.variant.VariantStorageEngine;
+import org.opencb.opencga.storage.core.variant.VariantStoragePipeline;
 import org.opencb.opencga.storage.core.variant.adaptors.VariantDBAdaptor;
+import org.opencb.opencga.storage.core.variant.adaptors.VariantQueryParam;
 import org.opencb.opencga.storage.core.variant.annotation.VariantAnnotationManager;
 import org.opencb.opencga.storage.core.variant.annotation.annotators.VariantAnnotator;
 import org.opencb.opencga.storage.core.variant.io.VariantReaderUtils;
@@ -47,13 +51,13 @@ import org.opencb.opencga.storage.hadoop.auth.HBaseCredentials;
 import org.opencb.opencga.storage.hadoop.utils.HBaseManager;
 import org.opencb.opencga.storage.hadoop.variant.adaptors.VariantHadoopDBAdaptor;
 import org.opencb.opencga.storage.hadoop.variant.annotation.HadoopDefaultVariantAnnotationManager;
-import org.opencb.opencga.storage.hadoop.variant.archive.ArchiveDriver;
 import org.opencb.opencga.storage.hadoop.variant.executors.ExternalMRExecutor;
 import org.opencb.opencga.storage.hadoop.variant.executors.MRExecutor;
-import org.opencb.opencga.storage.hadoop.variant.index.AbstractVariantTableDriver;
-import org.opencb.opencga.storage.hadoop.variant.index.VariantTableDeletionDriver;
-import org.opencb.opencga.storage.hadoop.variant.metadata.HBaseStudyConfigurationManager;
+import org.opencb.opencga.storage.hadoop.variant.index.VariantTableRemoveFileDriver;
+import org.opencb.opencga.storage.hadoop.variant.metadata.HBaseStudyConfigurationDBAdaptor;
 import org.opencb.opencga.storage.hadoop.variant.stats.HadoopDefaultVariantStatisticsManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -62,7 +66,10 @@ import java.net.URISyntaxException;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.zip.GZIPInputStream;
+
+import static org.opencb.opencga.storage.core.variant.adaptors.VariantQueryUtils.*;
 
 /**
  * Created by mh719 on 16/06/15.
@@ -85,25 +92,54 @@ public class HadoopVariantStorageEngine extends VariantStorageEngine {
     public static final String HADOOP_LOAD_VARIANT_STATUS = "hadoop.load.variant.status";
     //Other files to be loaded from Archive to Variant
     public static final String HADOOP_LOAD_VARIANT_PENDING_FILES = "opencga.storage.hadoop.load.pending.files";
-    public static final String OPENCGA_STORAGE_HADOOP_INTERMEDIATE_HDFS_DIRECTORY = "opencga.storage.hadoop.intermediate.hdfs.directory";
-    public static final String OPENCGA_STORAGE_HADOOP_VARIANT_HBASE_NAMESPACE = "opencga.storage.hadoop.variant.hbase.namespace";
-    public static final String OPENCGA_STORAGE_HADOOP_VARIANT_ARCHIVE_TABLE_PREFIX = "opencga.storage.hadoop.variant.archive.table.prefix";
-    public static final String OPENCGA_STORAGE_HADOOP_MAPREDUCE_SCANNER_TIMEOUT = "opencga.storage.hadoop.mapreduce.scanner.timeout";
+    public static final String INTERMEDIATE_HDFS_DIRECTORY = "opencga.storage.hadoop.intermediate.hdfs.directory";
 
     public static final String HADOOP_LOAD_ARCHIVE_BATCH_SIZE = "hadoop.load.archive.batch.size";
     public static final String HADOOP_LOAD_VARIANT_BATCH_SIZE = "hadoop.load.variant.batch.size";
     public static final String HADOOP_LOAD_DIRECT = "hadoop.load.direct";
     public static final boolean HADOOP_LOAD_DIRECT_DEFAULT = true;
 
-    public static final String EXTERNAL_MR_EXECUTOR = "opencga.external.mr.executor";
-    public static final String ARCHIVE_TABLE_PREFIX = "opencga_study_";
+    public static final String MERGE_ARCHIVE_SCAN_BATCH_SIZE = "opencga.storage.hadoop.hbase.merge.archive.scan.batchsize";
+    public static final int DEFAULT_MERGE_ARCHIVE_SCAN_BATCH_SIZE = 500;
+    public static final String MERGE_COLLAPSE_DELETIONS      = "opencga.storage.hadoop.hbase.merge.collapse-deletions";
+    public static final boolean DEFAULT_MERGE_COLLAPSE_DELETIONS = true;
+    public static final String MERGE_LOAD_SPECIFIC_PUT       = "opencga.storage.hadoop.hbase.merge.use_specific_put";
+//    public static final String MERGE_LOAD_STUDY_COLUMNS      = "opencga.storage.hadoop.hbase.merge.study_columns";
+    public static final String MERGE_LOAD_SAMPLE_COLUMNS     = "opencga.storage.hadoop.hbase.merge.sample_columns";
+    public static final boolean DEFAULT_MERGE_LOAD_SAMPLE_COLUMNS = true;
 
+    //upload HBase jars and jars for any of the configured job classes via the distributed cache (tmpjars).
+    public static final String MAPREDUCE_ADD_DEPENDENCY_JARS = "opencga.mapreduce.addDependencyJars";
+    public static final String MAPREDUCE_HBASE_SCANNER_TIMEOUT = "opencga.storage.hadoop.mapreduce.scanner.timeout";
+    public static final String MAPREDUCE_HBASE_KEYVALUE_SIZE_MAX = "hadoop.load.variant.hbase.client.keyvalue.maxsize";
+    public static final String MAPREDUCE_HBASE_SCAN_CACHING = "hadoop.load.variant.scan.caching";
+
+    public static final String HBASE_NAMESPACE = "opencga.storage.hadoop.variant.hbase.namespace";
+    public static final String HBASE_COLUMN_FAMILY = "opencga.hbase.column_family";
+
+    // Variant table configuration
+    public static final String VARIANT_TABLE_COMPRESSION = "opencga.variant.table.compression";
+    public static final String VARIANT_TABLE_PRESPLIT_SIZE = "opencga.variant.table.presplit.size";
+    // Do not create phoenix indexes. Testing purposes only
+    public static final String VARIANT_TABLE_INDEXES_SKIP = "opencga.variant.table.indexes.skip";
+
+    // Archive table configuration
+    public static final String ARCHIVE_TABLE_PREFIX = "opencga.storage.hadoop.variant.archive.table.prefix";
+    public static final String DEFAULT_ARCHIVE_TABLE_PREFIX = "opencga_study_";
+    public static final String ARCHIVE_TABLE_COMPRESSION = "opencga.archive.table.compression";
+    public static final String ARCHIVE_TABLE_PRESPLIT_SIZE = "opencga.archive.table.presplit.size";
+    public static final String ARCHIVE_CHUNK_SIZE = "opencga.archive.chunk_size";
+    public static final int DEFAULT_ARCHIVE_CHUNK_SIZE = 1000;
+    public static final String ARCHIVE_ROW_KEY_SEPARATOR = "opencga.archive.row_key_sep";
+
+    public static final String EXTERNAL_MR_EXECUTOR = "opencga.external.mr.executor";
 
     protected Configuration conf = null;
     protected MRExecutor mrExecutor;
     private HdfsVariantReaderUtils variantReaderUtils;
     private HBaseManager hBaseManager;
-
+    private final AtomicReference<VariantHadoopDBAdaptor> dbAdaptor = new AtomicReference<>();
+    private Logger logger = LoggerFactory.getLogger(HadoopVariantStorageEngine.class);
 
     public HadoopVariantStorageEngine() {
 //        variantReaderUtils = new HdfsVariantReaderUtils(conf);
@@ -152,7 +188,7 @@ public class HadoopVariantStorageEngine extends VariantStorageEngine {
         for (URI inputFile : inputFiles) {
             //Provide a connected storageETL if load is required.
 
-            VariantStoragePipeline storageETL = newStorageETL(doLoad, new ObjectMap(extraOptions));
+            VariantStoragePipeline storageETL = newStoragePipeline(doLoad, new ObjectMap(extraOptions));
             futures.add(executorService.submit(() -> {
                 try {
                     Thread.currentThread().setName(Paths.get(inputFile).getFileName().toString());
@@ -211,11 +247,11 @@ public class HadoopVariantStorageEngine extends VariantStorageEngine {
                     if (result.getTransformError() != null) {
                         //TODO: Handle errors. Retry?
                         errors++;
-                        result.getTransformError().printStackTrace();
+                        logger.error("Error transforming file " + result.getInput(), result.getTransformError());
                     } else if (result.getLoadError() != null) {
                         //TODO: Handle errors. Retry?
                         errors++;
-                        result.getLoadError().printStackTrace();
+                        logger.error("Error loading file " + result.getInput(), result.getLoadError());
                     }
                     concurrResult.add(result);
                 }
@@ -246,13 +282,16 @@ public class HadoopVariantStorageEngine extends VariantStorageEngine {
                                 .append(HADOOP_LOAD_ARCHIVE, false)
                                 .append(HADOOP_LOAD_VARIANT, true)
                                 .append(HADOOP_LOAD_VARIANT_PENDING_FILES, filesToMerge);
-
-                        AbstractHadoopVariantStoragePipeline localEtl = newStorageETL(doLoad, extraOptions);
+                        AbstractHadoopVariantStoragePipeline localEtl = newStoragePipeline(doLoad, extraOptions);
 
                         int studyId = getOptions().getInt(Options.STUDY_ID.key());
-                        localEtl.preLoad(inputFiles.get(i), outdirUri);
+                        URI input = concurrResult.get(i).getPostTransformResult();
+                        if (input == null) {
+                            input = inputFiles.get(i);
+                        }
+                        localEtl.preMerge(input);
                         localEtl.merge(studyId, filesToMerge);
-                        localEtl.postLoad(inputFiles.get(i), outdirUri);
+                        localEtl.postMerge(input, outdirUri);
                         filesToMerge.clear();
                     }
                 }
@@ -282,39 +321,44 @@ public class HadoopVariantStorageEngine extends VariantStorageEngine {
 
     @Override
     public AbstractHadoopVariantStoragePipeline newStoragePipeline(boolean connected) throws StorageEngineException {
-        return newStorageETL(connected, null);
+        return newStoragePipeline(connected, null);
     }
 
     @Override
-    protected VariantAnnotationManager newVariantAnnotationManager(VariantAnnotator annotator, VariantDBAdaptor dbAdaptor) {
-        return new HadoopDefaultVariantAnnotationManager(annotator, dbAdaptor);
+    protected VariantAnnotationManager newVariantAnnotationManager(VariantAnnotator annotator) throws StorageEngineException {
+        return new HadoopDefaultVariantAnnotationManager(annotator, getDBAdaptor());
     }
 
     @Override
-    public VariantStatisticsManager newVariantStatisticsManager(VariantDBAdaptor dbAdaptor) {
-        return new HadoopDefaultVariantStatisticsManager(dbAdaptor);
+    public VariantStatisticsManager newVariantStatisticsManager() throws StorageEngineException {
+        return new HadoopDefaultVariantStatisticsManager(getDBAdaptor());
     }
 
-    public AbstractHadoopVariantStoragePipeline newStorageETL(boolean connected, Map<? extends String, ?> extraOptions)
+    public AbstractHadoopVariantStoragePipeline newStoragePipeline(boolean connected, Map<? extends String, ?> extraOptions)
             throws StorageEngineException {
         ObjectMap options = new ObjectMap(configuration.getStorageEngine(STORAGE_ENGINE_ID).getVariant().getOptions());
         if (extraOptions != null) {
             options.putAll(extraOptions);
         }
+        MergeMode mergeMode = MergeMode.from(options);
         boolean directLoad = options.getBoolean(HADOOP_LOAD_DIRECT, HADOOP_LOAD_DIRECT_DEFAULT);
         VariantHadoopDBAdaptor dbAdaptor = connected ? getDBAdaptor() : null;
         Configuration hadoopConfiguration = null == dbAdaptor ? null : dbAdaptor.getConfiguration();
         hadoopConfiguration = hadoopConfiguration == null ? getHadoopConfiguration(options) : hadoopConfiguration;
-        hadoopConfiguration.setIfUnset(ArchiveDriver.CONFIG_ARCHIVE_TABLE_COMPRESSION, Algorithm.SNAPPY.getName());
+        hadoopConfiguration.setIfUnset(ARCHIVE_TABLE_COMPRESSION, Algorithm.SNAPPY.getName());
 
-        HBaseCredentials archiveCredentials = buildCredentials(getArchiveTableName(options.getInt(Options.STUDY_ID.key()), options));
+        int studyId = options.getInt(Options.STUDY_ID.key());
+        HBaseCredentials archiveCredentials = buildCredentials(getArchiveTableName(studyId, options));
 
-        AbstractHadoopVariantStoragePipeline storageETL = null;
-        if (directLoad) {
-            storageETL = new HadoopDirectVariantStoragePipeline(configuration, storageEngineId, dbAdaptor, getMRExecutor(options),
+        AbstractHadoopVariantStoragePipeline storageETL;
+        if (mergeMode.equals(MergeMode.BASIC)) {
+            storageETL = new HadoopMergeBasicVariantStoragePipeline(configuration, dbAdaptor,
+                    hadoopConfiguration, archiveCredentials, getVariantReaderUtils(hadoopConfiguration), options);
+        } else if (directLoad) {
+            storageETL = new HadoopDirectVariantStoragePipeline(configuration, dbAdaptor, getMRExecutor(options),
                     hadoopConfiguration, archiveCredentials, getVariantReaderUtils(hadoopConfiguration), options);
         } else {
-            storageETL = new HadoopVariantStoragePipeline(configuration, storageEngineId, dbAdaptor, getMRExecutor(options),
+            storageETL = new HadoopVariantStoragePipeline(configuration, dbAdaptor, getMRExecutor(options),
                     hadoopConfiguration, archiveCredentials, getVariantReaderUtils(hadoopConfiguration), options);
         }
         return storageETL;
@@ -333,43 +377,34 @@ public class HadoopVariantStorageEngine extends VariantStorageEngine {
         return variantReaderUtils;
     }
 
-    @Override
-    public void dropFile(String study, int fileId) throws StorageEngineException {
+    public void removeFiles(String study, List<String> files) throws StorageEngineException {
         ObjectMap options = configuration.getStorageEngine(STORAGE_ENGINE_ID).getVariant().getOptions();
-        // Use ETL as helper class
-        AbstractHadoopVariantStoragePipeline etl = newStoragePipeline(true);
-        VariantDBAdaptor dbAdaptor = etl.getDBAdaptor();
-        StudyConfiguration studyConfiguration;
-        StudyConfigurationManager scm = dbAdaptor.getStudyConfigurationManager();
-        List<Integer> fileList = Collections.singletonList(fileId);
-        final int studyId;
-        if (StringUtils.isNumeric(study)) {
-            studyId = Integer.parseInt(study);
-        } else {
-            studyConfiguration = scm.getStudyConfiguration(study, null).first();
-            studyId = studyConfiguration.getStudyId();
-        }
 
-        // Pre delete
-        long lock = scm.lockStudy(studyId);
-        try {
-            studyConfiguration = scm.getStudyConfiguration(studyId, null).first();
-            if (!studyConfiguration.getIndexedFiles().contains(fileId)) {
-                throw StorageEngineException.unableToExecute("File not indexed.", fileId, studyConfiguration);
-            }
-            boolean resume = options.getBoolean(Options.RESUME.key(), Options.RESUME.defaultValue())
-                    || options.getBoolean(HadoopVariantStorageEngine.HADOOP_LOAD_VARIANT_RESUME, false);
-            BatchFileOperation operation =
-                    etl.addBatchOperation(studyConfiguration, VariantTableDeletionDriver.JOB_OPERATION_NAME, fileList, resume,
-                            BatchFileOperation.Type.REMOVE);
-            options.put(AbstractVariantTableDriver.TIMESTAMP, operation.getTimestamp());
-            scm.updateStudyConfiguration(studyConfiguration, null);
-        } finally {
-            scm.unLockStudy(studyId, lock);
-        }
+        VariantDBAdaptor dbAdaptor = getDBAdaptor();
+        StudyConfigurationManager scm = dbAdaptor.getStudyConfigurationManager();
+        List<Integer> fileIds = preRemoveFiles(study, files);
+        final int studyId = scm.getStudyId(study, null);
+
+//        // Pre delete
+//        scm.lockAndUpdate(studyId, sc -> {
+//            if (!sc.getIndexedFiles().contains(fileId)) {
+//                throw StorageEngineException.unableToExecute("File not indexed.", fileId, sc);
+//            }
+//            boolean resume = options.getBoolean(Options.RESUME.key(), Options.RESUME.defaultValue())
+//                    || options.getBoolean(HadoopVariantStorageEngine.HADOOP_LOAD_VARIANT_RESUME, false);
+//            BatchFileOperation operation =
+//                    etl.addBatchOperation(sc, VariantTableRemoveFileDriver.JOB_OPERATION_NAME, fileList, resume,
+//                            BatchFileOperation.Type.REMOVE);
+//            options.put(AbstractAnalysisTableDriver.TIMESTAMP, operation.getTimestamp());
+//            return sc;
+//        });
+
+        StudyConfiguration sc = scm.getStudyConfiguration(studyId, null).first();
+        BatchFileOperation operation = StudyConfigurationManager.getOperation(sc, REMOVE_OPERATION_NAME, fileIds);
+        options.put(AbstractAnalysisTableDriver.TIMESTAMP, operation.getTimestamp());
 
         // Delete
-        Thread hook = etl.newShutdownHook(VariantTableDeletionDriver.JOB_OPERATION_NAME, fileList);
+        Thread hook = getStudyConfigurationManager().buildShutdownHook(REMOVE_OPERATION_NAME, studyId, fileIds);
         try {
             Runtime.getRuntime().addShutdownHook(hook);
 
@@ -378,14 +413,14 @@ public class HadoopVariantStorageEngine extends VariantStorageEngine {
             String hadoopRoute = options.getString(HADOOP_BIN, "hadoop");
             String jar = AbstractHadoopVariantStoragePipeline.getJarWithDependencies(options);
 
-            Class execClass = VariantTableDeletionDriver.class;
-            String args = VariantTableDeletionDriver.buildCommandLineArgs(variantsTable.toString(), archiveTable,
-                    variantsTable.getTable(), studyId, fileList, options);
+            Class execClass = VariantTableRemoveFileDriver.class;
+            String args = VariantTableRemoveFileDriver.buildCommandLineArgs(variantsTable.toString(), archiveTable,
+                    variantsTable.getTable(), studyId, fileIds, options);
             String executable = hadoopRoute + " jar " + jar + ' ' + execClass.getName();
 
             long startTime = System.currentTimeMillis();
             logger.info("------------------------------------------------------");
-            logger.info("Remove file ID {} in archive '{}' and analysis table '{}'", fileId, archiveTable, variantsTable.getTable());
+            logger.info("Remove files {} in archive '{}' and analysis table '{}'", fileIds, archiveTable, variantsTable.getTable());
             logger.debug(executable + " " + args);
             logger.info("------------------------------------------------------");
             int exitValue = getMRExecutor(options).run(executable, args);
@@ -393,24 +428,21 @@ public class HadoopVariantStorageEngine extends VariantStorageEngine {
             logger.info("Exit value: {}", exitValue);
             logger.info("Total time: {}s", (System.currentTimeMillis() - startTime) / 1000.0);
             if (exitValue != 0) {
-                throw new StorageEngineException("Error removing fileId " + fileId + " from tables ");
+                throw new StorageEngineException("Error removing files " + fileIds + " from tables ");
             }
 
-            // Post Delete
-            // If everything went fine, remove file column from Archive table and from studyconfig
-            lock = scm.lockStudy(studyId);
-            try {
-                studyConfiguration = scm.getStudyConfiguration(studyId, null).first();
-                etl.secureSetStatus(studyConfiguration, BatchFileOperation.Status.READY,
-                        VariantTableDeletionDriver.JOB_OPERATION_NAME, fileList);
-                studyConfiguration.getIndexedFiles().remove(fileId);
-                scm.updateStudyConfiguration(studyConfiguration, null);
-            } finally {
-                scm.unLockStudy(studyId, lock);
-            }
+//            // Post Delete
+//            // If everything went fine, remove file column from Archive table and from studyconfig
+//            scm.lockAndUpdate(studyId, sc -> {
+//                scm.setStatus(sc, BatchFileOperation.Status.READY,
+//                        VariantTableRemoveFileDriver.JOB_OPERATION_NAME, fileIds);
+//                sc.getIndexedFiles().remove(fileId);
+//                return sc;
+//            });
 
+            postRemoveFiles(study, fileIds, false);
         } catch (Exception e) {
-            etl.setStatus(BatchFileOperation.Status.ERROR, VariantTableDeletionDriver.JOB_OPERATION_NAME, fileList);
+            postRemoveFiles(study, fileIds, true);
             throw e;
         } finally {
             Runtime.getRuntime().removeShutdownHook(hook);
@@ -418,14 +450,8 @@ public class HadoopVariantStorageEngine extends VariantStorageEngine {
     }
 
     @Override
-    public void dropStudy(String studyName) throws StorageEngineException {
+    public void removeStudy(String studyName) throws StorageEngineException {
         throw new UnsupportedOperationException("Unimplemented");
-    }
-
-    @Override
-    public VariantHadoopDBAdaptor getDBAdaptor(String tableName) throws StorageEngineException {
-        tableName = getVariantTableName(tableName);
-        return getDBAdaptor(buildCredentials(tableName));
     }
 
     private HBaseCredentials getDbCredentials() throws StorageEngineException {
@@ -435,19 +461,23 @@ public class HadoopVariantStorageEngine extends VariantStorageEngine {
 
     @Override
     public VariantHadoopDBAdaptor getDBAdaptor() throws StorageEngineException {
-        return getDBAdaptor(getDbCredentials());
-    }
-
-    protected VariantHadoopDBAdaptor getDBAdaptor(HBaseCredentials credentials) throws StorageEngineException {
-        try {
-            StorageEngineConfiguration storageEngine = this.configuration.getStorageEngine(STORAGE_ENGINE_ID);
-            Configuration configuration = getHadoopConfiguration(storageEngine.getVariant().getOptions());
-            configuration = VariantHadoopDBAdaptor.getHbaseConfiguration(configuration, credentials);
-            return new VariantHadoopDBAdaptor(getHBaseManager(configuration).getConnection(), credentials,
-                    this.configuration, configuration);
-        } catch (IOException e) {
-            throw new StorageEngineException("Problems creating DB Adapter", e);
+        if (dbAdaptor.get() == null) {
+            synchronized (dbAdaptor) {
+                if (dbAdaptor.get() == null) {
+                    HBaseCredentials credentials = getDbCredentials();
+                    try {
+                        StorageEngineConfiguration storageEngine = this.configuration.getStorageEngine(STORAGE_ENGINE_ID);
+                        Configuration configuration = getHadoopConfiguration(storageEngine.getVariant().getOptions());
+                        configuration = VariantHadoopDBAdaptor.getHbaseConfiguration(configuration, credentials);
+                        dbAdaptor.set(new VariantHadoopDBAdaptor(getHBaseManager(configuration), credentials,
+                                this.configuration, configuration, getCellBaseUtils()));
+                    } catch (IOException e) {
+                        throw new StorageEngineException("Error creating DB Adapter", e);
+                    }
+                }
+            }
         }
+        return dbAdaptor.get();
     }
 
     private synchronized HBaseManager getHBaseManager(Configuration configuration) {
@@ -457,14 +487,43 @@ public class HadoopVariantStorageEngine extends VariantStorageEngine {
         return hBaseManager;
     }
 
+    @Override
+    protected boolean doQuerySearchManager(Query query, QueryOptions options) throws StorageEngineException {
+        // TODO: Query using SearchManager even if FILES filter is used
+        return super.doQuerySearchManager(query, options);
+    }
+
+    @Override
+    public Query preProcessQuery(Query originalQuery, StudyConfigurationManager studyConfigurationManager) throws StorageEngineException {
+        // Copy input query! Do not modify original query!
+        Query query = originalQuery == null ? new Query() : new Query(originalQuery);
+        List<String> studyNames = studyConfigurationManager.getStudyNames(QueryOptions.empty());
+        CellBaseUtils cellBaseUtils = getCellBaseUtils();
+
+        if (isValidParam(query, VariantQueryParam.STUDIES) && studyNames.size() == 1) {
+            query.remove(VariantQueryParam.STUDIES.key());
+        }
+
+        convertGoToGeneQuery(query, cellBaseUtils);
+        convertExpressionToGeneQuery(query, cellBaseUtils);
+
+        return query;
+    }
+
+    @Override
     public void close() throws IOException {
+        super.close();
         if (hBaseManager != null) {
             hBaseManager.close();
             hBaseManager = null;
         }
+        if (dbAdaptor.get() != null) {
+            dbAdaptor.get().close();
+            dbAdaptor.set(null);
+        }
     }
 
-    public HBaseCredentials buildCredentials(String table) throws StorageEngineException {
+    private HBaseCredentials buildCredentials(String table) throws StorageEngineException {
         StorageEtlConfiguration vStore = configuration.getStorageEngine(STORAGE_ENGINE_ID).getVariant();
 
         DatabaseCredentials db = vStore.getDatabase();
@@ -485,7 +544,16 @@ public class HadoopVariantStorageEngine extends VariantStorageEngine {
                 port = 60000;
                 zookeeperPath = conf.get(HConstants.ZOOKEEPER_ZNODE_PARENT);
             } else {
-                URI uri = new URI(target);
+                URI uri;
+                try {
+                    uri = new URI(target);
+                } catch (URISyntaxException e) {
+                    try {
+                        uri = new URI("hbase://" + target);
+                    } catch (URISyntaxException e1) {
+                        throw e;
+                    }
+                }
                 server = uri.getHost();
                 port = uri.getPort() > 0 ? uri.getPort() : 60000;
                 // If just an IP or host name is provided, the URI parser will return empty host, and the content as "path". Avoid that
@@ -510,15 +578,11 @@ public class HadoopVariantStorageEngine extends VariantStorageEngine {
 
 
     @Override
-    protected StudyConfigurationManager buildStudyConfigurationManager(ObjectMap options) throws StorageEngineException {
-        try {
-            HBaseCredentials dbCredentials = getDbCredentials();
-            Configuration configuration = VariantHadoopDBAdaptor.getHbaseConfiguration(getHadoopConfiguration(options), dbCredentials);
-            return new HBaseStudyConfigurationManager(dbCredentials.getTable(), configuration, options);
-        } catch (IOException e) {
-            e.printStackTrace();
-            return super.buildStudyConfigurationManager(options);
-        }
+    public StudyConfigurationManager getStudyConfigurationManager() throws StorageEngineException {
+        ObjectMap options = getOptions();
+        HBaseCredentials dbCredentials = getDbCredentials();
+        Configuration configuration = VariantHadoopDBAdaptor.getHbaseConfiguration(getHadoopConfiguration(options), dbCredentials);
+        return new StudyConfigurationManager(new HBaseStudyConfigurationDBAdaptor(dbCredentials.getTable(), configuration, options));
     }
 
     private Configuration getHadoopConfiguration(ObjectMap options) throws StorageEngineException {
@@ -538,7 +602,7 @@ public class HadoopVariantStorageEngine extends VariantStorageEngine {
         return conf;
     }
 
-    public MRExecutor getMRExecutor(ObjectMap options) {
+    private MRExecutor getMRExecutor(ObjectMap options) {
         if (options.containsKey(EXTERNAL_MR_EXECUTOR)) {
             Class<? extends MRExecutor> aClass;
             if (options.get(EXTERNAL_MR_EXECUTOR) instanceof Class) {
@@ -569,11 +633,11 @@ public class HadoopVariantStorageEngine extends VariantStorageEngine {
      * @return Table name
      */
     public String getArchiveTableName(int studyId) {
-        String prefix = getOptions().getString(OPENCGA_STORAGE_HADOOP_VARIANT_ARCHIVE_TABLE_PREFIX);
+        String prefix = getOptions().getString(ARCHIVE_TABLE_PREFIX);
         if (StringUtils.isEmpty(prefix)) {
-            prefix = ARCHIVE_TABLE_PREFIX;
+            prefix = DEFAULT_ARCHIVE_TABLE_PREFIX;
         }
-        return buildTableName(getOptions().getString(OPENCGA_STORAGE_HADOOP_VARIANT_HBASE_NAMESPACE, ""),
+        return buildTableName(getOptions().getString(HBASE_NAMESPACE, ""),
                 prefix, studyId);
     }
 
@@ -585,11 +649,11 @@ public class HadoopVariantStorageEngine extends VariantStorageEngine {
      * @return Table name
      */
     public static String getArchiveTableName(int studyId, Configuration conf) {
-        String prefix = conf.get(OPENCGA_STORAGE_HADOOP_VARIANT_ARCHIVE_TABLE_PREFIX);
+        String prefix = conf.get(ARCHIVE_TABLE_PREFIX);
         if (StringUtils.isEmpty(prefix)) {
-            prefix = ARCHIVE_TABLE_PREFIX;
+            prefix = DEFAULT_ARCHIVE_TABLE_PREFIX;
         }
-        return buildTableName(conf.get(OPENCGA_STORAGE_HADOOP_VARIANT_HBASE_NAMESPACE, ""),
+        return buildTableName(conf.get(HBASE_NAMESPACE, ""),
                 prefix, studyId);
     }
 
@@ -601,28 +665,24 @@ public class HadoopVariantStorageEngine extends VariantStorageEngine {
      * @return Table name
      */
     public static String getArchiveTableName(int studyId, ObjectMap options) {
-        String prefix = options.getString(OPENCGA_STORAGE_HADOOP_VARIANT_ARCHIVE_TABLE_PREFIX);
+        String prefix = options.getString(ARCHIVE_TABLE_PREFIX);
         if (StringUtils.isEmpty(prefix)) {
-            prefix = ARCHIVE_TABLE_PREFIX;
+            prefix = DEFAULT_ARCHIVE_TABLE_PREFIX;
         }
-        return buildTableName(options.getString(OPENCGA_STORAGE_HADOOP_VARIANT_HBASE_NAMESPACE, ""),
+        return buildTableName(options.getString(HBASE_NAMESPACE, ""),
                 prefix, studyId);
     }
 
     public String getVariantTableName() {
-        return getVariantTableName(getOptions().getString(Options.DB_NAME.key()));
-    }
-
-    public String getVariantTableName(String table) {
-        return getVariantTableName(table, getOptions());
+        return getVariantTableName(dbName, getOptions());
     }
 
     public static String getVariantTableName(String table, ObjectMap options) {
-        return buildTableName(options.getString(OPENCGA_STORAGE_HADOOP_VARIANT_HBASE_NAMESPACE, ""), "", table);
+        return buildTableName(options.getString(HBASE_NAMESPACE, ""), "", table);
     }
 
     public static String getVariantTableName(String table, Configuration conf) {
-        return buildTableName(conf.get(OPENCGA_STORAGE_HADOOP_VARIANT_HBASE_NAMESPACE, ""), "", table);
+        return buildTableName(conf.get(HBASE_NAMESPACE, ""), "", table);
     }
 
     protected static String buildTableName(String namespace, String prefix, int studyId) {
@@ -691,7 +751,6 @@ public class HadoopVariantStorageEngine extends VariantStorageEngine {
             ) {
                 source = VariantReaderUtils.readVariantSource(inputStream);
             } catch (IOException e) {
-                e.printStackTrace();
                 throw new StorageEngineException("Unable to read VariantSource", e);
             }
             return source;

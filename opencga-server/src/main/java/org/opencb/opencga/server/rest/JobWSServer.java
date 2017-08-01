@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,29 +22,31 @@ import org.opencb.commons.datastore.core.QueryOptions;
 import org.opencb.commons.datastore.core.QueryResult;
 import org.opencb.opencga.catalog.db.api.JobDBAdaptor;
 import org.opencb.opencga.catalog.exceptions.CatalogException;
+import org.opencb.opencga.catalog.managers.api.IJobManager;
 import org.opencb.opencga.catalog.models.File;
 import org.opencb.opencga.catalog.models.Job;
+import org.opencb.opencga.catalog.models.acls.AclParams;
 import org.opencb.opencga.core.exception.VersionException;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.*;
-import javax.ws.rs.core.Context;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriInfo;
+import javax.ws.rs.core.*;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-///opencga/rest/v1/jobs/create?analysisId=23&tool=samtools
 @Path("/{version}/jobs")
 @Produces(MediaType.APPLICATION_JSON)
 @Api(value = "Jobs", position = 5, description = "Methods for working with 'jobs' endpoint")
 public class JobWSServer extends OpenCGAWSServer {
 
+    private IJobManager jobManager;
 
-    public JobWSServer(@Context UriInfo uriInfo, @Context HttpServletRequest httpServletRequest) throws IOException, VersionException {
-        super(uriInfo, httpServletRequest);
+    public JobWSServer(@Context UriInfo uriInfo, @Context HttpServletRequest httpServletRequest, @Context HttpHeaders httpHeaders) throws IOException, VersionException {
+        super(uriInfo, httpServletRequest, httpHeaders);
+        jobManager = catalogManager.getJobManager();
     }
 
 
@@ -61,7 +63,7 @@ public class JobWSServer extends OpenCGAWSServer {
             this.endTime = endTime;
             this.commandLine = commandLine;
             this.status = status;
-            this.outDirId = outDirId;
+            this.outDir = outDirId;
             this.input = input;
             this.attributes = attributes;
             this.resourceManagerAttributes = resourceManagerAttributes;
@@ -81,8 +83,9 @@ public class JobWSServer extends OpenCGAWSServer {
         public String commandLine;
         public Status status = Status.READY;
         public String statusMessage;
-        @ApiModelProperty(required = true)
         public String outDirId;
+        @ApiModelProperty(required = true)
+        public String outDir;
         public List<Long> input;
         public List<Long> output;
         public Map<String, Object> attributes;
@@ -106,6 +109,9 @@ public class JobWSServer extends OpenCGAWSServer {
             if (StringUtils.isNotEmpty(studyIdStr)) {
                 studyStr = studyIdStr;
             }
+            if (StringUtils.isNotEmpty(job.outDirId) && StringUtils.isEmpty(job.outDir)) {
+                job.outDir = job.outDirId;
+            }
             long studyId = catalogManager.getStudyId(studyStr, sessionId);
             Job.JobStatus jobStatus;
             if (Job.JobStatus.isValid(job.status.toString())) {
@@ -114,14 +120,25 @@ public class JobWSServer extends OpenCGAWSServer {
                 jobStatus = new Job.JobStatus();
                 jobStatus.setMessage(job.statusMessage);
             }
-            long outDir = catalogManager.getFileId(job.outDirId, Long.toString(studyId), sessionId);
+            long outDir = catalogManager.getFileId(job.outDir, Long.toString(studyId), sessionId);
             QueryResult<Job> result = catalogManager.createJob(studyId, job.name, job.toolName, job.description, job.execution, job.params,
-                    job.commandLine, null, outDir, job.input, job.output, job.attributes, job.resourceManagerAttributes, jobStatus,
-                    job.startTime, job.endTime, queryOptions, sessionId);
+                    job.commandLine, null, outDir, parseToListOfFiles(job.input), parseToListOfFiles(job.output), job.attributes,
+                    job.resourceManagerAttributes, jobStatus, job.startTime, job.endTime, queryOptions, sessionId);
             return createOkResponse(result);
         } catch (Exception e) {
             return createErrorResponse(e);
         }
+    }
+
+    private List<File> parseToListOfFiles(List<Long> longList) {
+        if (longList == null || longList.size() == 0) {
+            return Collections.emptyList();
+        }
+        List<File> fileList = new ArrayList<>(longList.size());
+        for (Long myLong : longList) {
+            fileList.add(new File().setId(myLong));
+        }
+        return fileList;
     }
 
     @GET
@@ -163,6 +180,7 @@ public class JobWSServer extends OpenCGAWSServer {
                            @ApiParam(value = "Comma separated list of input file ids", required = false) @DefaultValue("") @QueryParam("inputFiles") String inputFiles,
                            @ApiParam(value = "Comma separated list of output file ids", required = false) @DefaultValue("")
                                @QueryParam ("outputFiles") String outputFiles,
+                           @ApiParam(value = "Release value") @QueryParam("release") String release,
                            @ApiParam(value = "Skip count", defaultValue = "false") @QueryParam("skipCount") boolean skipCount) {
         try {
             queryOptions.put(QueryOptions.SKIP_COUNT, skipCount);
@@ -178,8 +196,12 @@ public class JobWSServer extends OpenCGAWSServer {
                 query.remove(JobDBAdaptor.QueryParams.NAME.key());
                 logger.debug("Name attribute empty, it's been removed");
             }
-
-            QueryResult<Job> result = catalogManager.getAllJobs(studyIdNum, query, queryOptions, sessionId);
+            QueryResult<Job> result;
+            if (count) {
+                result = catalogManager.getJobManager().count(Long.toString(studyIdNum), query, sessionId);
+            } else {
+                result = catalogManager.getAllJobs(studyIdNum, query, queryOptions, sessionId);
+            }
             return createOkResponse(result);
         } catch (Exception e) {
             return createErrorResponse(e);
@@ -199,7 +221,7 @@ public class JobWSServer extends OpenCGAWSServer {
 
     @GET
     @Path("/{jobIds}/delete")
-    @ApiOperation(value = "Delete job", position = 4)
+    @ApiOperation(value = "Delete job [NOT TESTED]", position = 4)
     public Response delete(@ApiParam(value = "Comma separated list of job ids or names", required = true) @PathParam("jobIds")
                                        String jobIds,
                            @ApiParam(value = "Study [[user@]project:]study where study and project can be either the id or alias")
@@ -246,71 +268,15 @@ public class JobWSServer extends OpenCGAWSServer {
 
     @GET
     @Path("/{jobIds}/acl")
-    @ApiOperation(value = "Return the acl of the job", position = 18)
-    public Response getAcls(@ApiParam(value = "Comma separated list of job ids", required = true) @PathParam("jobIds") String jobIdsStr) {
+    @ApiOperation(value = "Return the acl of the job. If member is provided, it will only return the acl for the member.", position = 18)
+    public Response getAcls(@ApiParam(value = "Comma separated list of job ids", required = true) @PathParam("jobIds") String jobIdsStr,
+                            @ApiParam(value = "User or group id") @QueryParam("member") String member) {
         try {
-            return createOkResponse(catalogManager.getAllJobAcls(jobIdsStr, sessionId));
-        } catch (Exception e) {
-            return createErrorResponse(e);
-        }
-    }
-
-
-    @GET
-    @Path("/{jobIds}/acl/create")
-    @ApiOperation(value = "Define a set of permissions for a list of members", hidden = true, position = 19)
-    public Response createRole(@ApiParam(value = "Comma separated list of job ids", required = true) @PathParam("jobIds") String jobIdsStr,
-                               @ApiParam(value = "Comma separated list of permissions that will be granted to the member list",
-                                       required = false) @DefaultValue("") @QueryParam("permissions") String permissions,
-                               @ApiParam(value = "Comma separated list of members. Accepts: '{userId}', '@{groupId}' or '*'",
-                                       required = true) @DefaultValue("") @QueryParam("members") String members) {
-        try {
-            return createOkResponse(catalogManager.createJobAcls(jobIdsStr, members, permissions, sessionId));
-        } catch (Exception e) {
-            return createErrorResponse(e);
-        }
-    }
-
-    @POST
-    @Path("/{jobIds}/acl/create")
-    @ApiOperation(value = "Define a set of permissions for a list of members", position = 19)
-    public Response createRolePOST(
-            @ApiParam(value = "Comma separated list of job ids", required = true) @PathParam("jobIds") String jobIdsStr,
-            @ApiParam(value="JSON containing the parameters defined in GET. Mandatory keys: 'members'", required = true)
-                    StudyWSServer.CreateAclCommands params) {
-        try {
-            return createOkResponse(catalogManager.createJobAcls(jobIdsStr, params.members, params.permissions, sessionId));
-        } catch (Exception e) {
-            return createErrorResponse(e);
-        }
-    }
-
-    @GET
-    @Path("/{jobId}/acl/{memberId}/info")
-    @ApiOperation(value = "Return the set of permissions granted for the member", position = 20)
-    public Response getAcl(@ApiParam(value = "jobId", required = true) @PathParam("jobId") String jobIdStr,
-                           @ApiParam(value = "Member id", required = true) @PathParam("memberId") String memberId) {
-        try {
-            return createOkResponse(catalogManager.getJobAcl(jobIdStr, memberId, sessionId));
-        } catch (Exception e) {
-            return createErrorResponse(e);
-        }
-    }
-
-    @GET
-    @Path("/{jobId}/acl/{memberId}/update")
-    @ApiOperation(value = "Update the set of permissions granted for the member", hidden = true, position = 21)
-    public Response updateAcl(@ApiParam(value = "jobId", required = true) @PathParam("jobId") String jobIdStr,
-                              @ApiParam(value = "Member id", required = true) @PathParam("memberId") String memberId,
-                              @ApiParam(value = "Comma separated list of permissions to add", required = false)
-                                  @QueryParam("add") String addPermissions,
-                              @ApiParam(value = "Comma separated list of permissions to remove", required = false)
-                                  @QueryParam("remove") String removePermissions,
-                              @ApiParam(value = "Comma separated list of permissions to set", required = false)
-                                  @QueryParam("set") String setPermissions) {
-        try {
-            return createOkResponse(catalogManager.updateJobAcl(jobIdStr, memberId, addPermissions, removePermissions, setPermissions,
-                    sessionId));
+            if (StringUtils.isEmpty(member)) {
+                return createOkResponse(catalogManager.getAllJobAcls(jobIdsStr, sessionId));
+            } else {
+                return createOkResponse(catalogManager.getJobAcl(jobIdsStr, member, sessionId));
+            }
         } catch (Exception e) {
             return createErrorResponse(e);
         }
@@ -318,26 +284,34 @@ public class JobWSServer extends OpenCGAWSServer {
 
     @POST
     @Path("/{jobId}/acl/{memberId}/update")
-    @ApiOperation(value = "Update the set of permissions granted for the member", position = 21)
+    @ApiOperation(value = "Update the set of permissions granted for the member [DEPRECATED]", position = 21,
+            notes = "DEPRECATED: The usage of this webservice is discouraged. A different entrypoint /acl/{members}/update has been added "
+                    + "to also support changing permissions using queries.")
     public Response updateAclPOST(
             @ApiParam(value = "jobId", required = true) @PathParam("jobId") String jobIdStr,
             @ApiParam(value = "Member id", required = true) @PathParam("memberId") String memberId,
-            @ApiParam(value="JSON containing one of the keys 'add', 'set' or 'remove'", required = true)
-                    StudyWSServer.MemberAclUpdate params) {
+            @ApiParam(value="JSON containing one of the keys 'add', 'set' or 'remove'", required = true) StudyWSServer.MemberAclUpdateOld params) {
         try {
-            return createOkResponse(catalogManager.updateJobAcl(jobIdStr, memberId, params.add, params.remove, params.set, sessionId));
+            AclParams aclParams = getAclParams(params.add, params.remove, params.set);
+            return createOkResponse(jobManager.updateAcl(jobIdStr, null, memberId, aclParams, sessionId));
         } catch (Exception e) {
             return createErrorResponse(e);
         }
     }
 
-    @GET
-    @Path("/{jobIds}/acl/{memberId}/delete")
-    @ApiOperation(value = "Remove all the permissions granted for the member", position = 22)
-    public Response deleteAcl(@ApiParam(value = "Comma separated list of job ids", required = true) @PathParam("jobIds") String jobIdsStr,
-                              @ApiParam(value = "Member id", required = true) @PathParam("memberId") String memberId) {
+    public static class JobAcl extends AclParams {
+        public String job;
+    }
+
+    @POST
+    @Path("/acl/{memberIds}/update")
+    @ApiOperation(value = "Update the set of permissions granted for the member", position = 21)
+    public Response updateAcl(
+            @ApiParam(value = "Comma separated list of user or group ids", required = true) @PathParam("memberIds") String memberId,
+            @ApiParam(value="JSON containing the parameters to add ACLs", required = true) JobAcl params) {
         try {
-            return createOkResponse(catalogManager.removeJobAcl(jobIdsStr, memberId, sessionId));
+            AclParams aclParams = new AclParams(params.getPermissions(), params.getAction());
+            return createOkResponse(jobManager.updateAcl(params.job, null, memberId, aclParams, sessionId));
         } catch (Exception e) {
             return createErrorResponse(e);
         }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,11 +21,8 @@ import com.mongodb.BasicDBObject;
 import com.mongodb.DBObject;
 import com.mongodb.ErrorCategory;
 import com.mongodb.MongoWriteException;
-import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Projections;
 import com.mongodb.client.model.Updates;
-import com.mongodb.client.result.UpdateResult;
 import com.mongodb.util.JSON;
 import org.bson.Document;
 import org.bson.conversions.Bson;
@@ -35,12 +32,9 @@ import org.opencb.commons.datastore.mongodb.MongoDBQueryUtils;
 import org.opencb.opencga.catalog.db.AbstractDBAdaptor;
 import org.opencb.opencga.catalog.db.DBAdaptorFactory;
 import org.opencb.opencga.catalog.db.api.DBAdaptor;
-import org.opencb.opencga.catalog.db.api.FileDBAdaptor;
 import org.opencb.opencga.catalog.db.api.SampleDBAdaptor;
 import org.opencb.opencga.catalog.exceptions.CatalogDBException;
 import org.opencb.opencga.catalog.models.*;
-import org.opencb.opencga.catalog.models.acls.permissions.AbstractAclEntry;
-import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.util.*;
@@ -82,7 +76,7 @@ class MongoDBUtils {
             "includeStudies", "includeFiles", "includeJobs", "includeSamples").stream().collect(Collectors.toSet());
     //    public static final Pattern OPERATION_PATTERN = Pattern.compile("^([^=<>~!]*)(<=?|>=?|!=|!?=?~|==?)([^=<>~!]+.*)$");
     public static final Pattern OPERATION_PATTERN = Pattern.compile("^()(<=?|>=?|!=|!?=?~|==?)([^=<>~!]+.*)$");
-    public static final Pattern ANNOTATION_PATTERN = Pattern.compile("^([a-zA-Z\\\\.]+)([\\^=<>~!$]+.*)$");
+    public static final Pattern ANNOTATION_PATTERN = Pattern.compile("^([^=^<>~!$]+)([=^<>~!$]+.*)$");
     static final String TO_REPLACE_DOTS = "&#46;";
     private static ObjectMapper jsonObjectMapper;
     private static ObjectWriter jsonObjectWriter;
@@ -101,14 +95,6 @@ class MongoDBUtils {
 
     @Deprecated
     static long getNewAutoIncrementId(String field, MongoDBCollection metaCollection) {
-//        QueryResult<BasicDBObject> result = metaCollection.findAndModify(
-//                new BasicDBObject("_id", CatalogMongoDBAdaptor.METADATA_OBJECT_ID),  //Query
-//                new BasicDBObject(field, true),  //Fields
-//                null,
-//                new BasicDBObject("$inc", new BasicDBObject(field, 1)), //Update
-//                new QueryOptions("returnNew", true),
-//                BasicDBObject.class
-//        );
 
         Bson query = Filters.eq("_id", MongoDBAdaptorFactory.METADATA_OBJECT_ID);
         Document projection = new Document(field, true);
@@ -118,95 +104,6 @@ class MongoDBUtils {
 //        return (int) Float.parseFloat(result.getResult().get(0).get(field).toString());
         return result.getResult().get(0).getInteger(field);
     }
-
-    //--------------- ACL operations -------------------------/
-
-    static void createAcl(long id, AbstractAclEntry acl, MongoDBCollection collection, String clazz) throws CatalogDBException {
-        // Push the new acl to the list of acls.
-        Document queryDocument = new Document(PRIVATE_ID, id);
-        Document update = new Document("$push", new Document(FileDBAdaptor.QueryParams.ACL.key(), getMongoDBDocument(acl, clazz)));
-        QueryResult<UpdateResult> updateResult = collection.update(queryDocument, update, null);
-
-        if (updateResult.first().getModifiedCount() == 0) {
-            throw new CatalogDBException("create Acl: An error occurred when trying to create acl for " + id + " for " + acl.getMember());
-        }
-    }
-
-    static QueryResult<Document> getAcl(long id, List<String> members, MongoDBCollection collection, Logger logger)
-            throws CatalogDBException {
-        List<Bson> aggregation = new ArrayList<>();
-        aggregation.add(Aggregates.match(Filters.eq(PRIVATE_ID, id)));
-        aggregation.add(Aggregates.project(Projections.include(FileDBAdaptor.QueryParams.ID.key(),
-                FileDBAdaptor.QueryParams.ACL.key())));
-        aggregation.add(Aggregates.unwind("$" + FileDBAdaptor.QueryParams.ACL.key()));
-
-        List<Bson> filters = new ArrayList<>();
-        if (members != null && members.size() > 0) {
-            filters.add(Filters.in(FileDBAdaptor.QueryParams.ACL_MEMBER.key(), members));
-        }
-
-        if (filters.size() > 0) {
-            Bson filter = filters.size() == 1 ? filters.get(0) : Filters.and(filters);
-            aggregation.add(Aggregates.match(filter));
-        }
-
-        for (Bson bson : aggregation) {
-            logger.debug("Get Acl: {}", bson.toBsonDocument(Document.class, com.mongodb.MongoClient.getDefaultCodecRegistry()));
-        }
-
-        return collection.aggregate(aggregation, null);
-    }
-
-    static void removeAcl(long id, String member, MongoDBCollection collection) throws CatalogDBException {
-        Document query = new Document()
-                .append(PRIVATE_ID, id)
-                .append(FileDBAdaptor.QueryParams.ACL_MEMBER.key(), member);
-        Bson update = new Document()
-                .append("$pull", new Document("acl", new Document("member", member)));
-        QueryResult<UpdateResult> updateResult = collection.update(query, update, null);
-        if (updateResult.first().getModifiedCount() == 0) {
-            throw new CatalogDBException("remove ACL: An error occurred when trying to remove the ACL defined for " + member);
-        }
-    }
-
-    static void setAclsToMember(long id, String member, List<String> permissions, MongoDBCollection collection) throws CatalogDBException {
-        Document query = new Document()
-                .append(PRIVATE_ID, id)
-                .append(FileDBAdaptor.QueryParams.ACL_MEMBER.key(), member);
-        Document update = new Document("$set", new Document("acl.$.permissions", permissions));
-        QueryResult<UpdateResult> queryResult = collection.update(query, update, null);
-
-        if (queryResult.first().getModifiedCount() != 1) {
-            throw new CatalogDBException("Unable to set the new permissions to " + member);
-        }
-    }
-
-    static void addAclsToMember(long id, String member, List<String> permissions, MongoDBCollection collection) throws CatalogDBException {
-        Document query = new Document()
-                .append(PRIVATE_ID, id)
-                .append(FileDBAdaptor.QueryParams.ACL_MEMBER.key(), member);
-        Document update = new Document("$addToSet", new Document("acl.$.permissions", new Document("$each", permissions)));
-        QueryResult<UpdateResult> queryResult = collection.update(query, update, null);
-
-        if (queryResult.first().getModifiedCount() != 1) {
-            throw new CatalogDBException("Unable to add new permissions to " + member + ". Maybe the member already had those"
-                    + " permissions?");
-        }
-    }
-
-    static void removeAclsFromMember(long id, String member, List<String> permissions, MongoDBCollection collection)
-            throws CatalogDBException {
-        Document query = new Document()
-                .append(PRIVATE_ID, id)
-                .append(FileDBAdaptor.QueryParams.ACL_MEMBER.key(), member);
-        Bson pull = Updates.pullAll("acl.$.permissions", permissions);
-        QueryResult<UpdateResult> update = collection.update(query, pull, null);
-        if (update.first().getModifiedCount() != 1) {
-            throw new CatalogDBException("Unable to remove the permissions from " + member + ". Maybe it didn't have those permissions?");
-        }
-    }
-
-    //--------------- End ACL operations ---------------------/
 
     /*
     * Helper methods
@@ -231,7 +128,7 @@ class MongoDBUtils {
             return;
         } else if (userId.startsWith("@")) {
             String groupId = userId.substring(1);
-            QueryResult<Group> queryResult = dbAdaptorFactory.getCatalogStudyDBAdaptor().getGroup(studyId, null, groupId, null);
+            QueryResult<Group> queryResult = dbAdaptorFactory.getCatalogStudyDBAdaptor().getGroup(studyId, groupId, null);
             if (queryResult.getNumResults() == 0) {
                 throw CatalogDBException.idNotFound("Group", groupId);
             }
@@ -284,10 +181,7 @@ class MongoDBUtils {
             return null;
         }
         try {
-//            result.first().remove("_id");
-//            result.first().remove("_studyId");
             String s = jsonObjectWriter.writeValueAsString(result.first());
-//            return getObjectReader(tClass).readValue(restoreDotsInKeys(result.first().toJson()));
             return getObjectReader(tClass).readValue(restoreDotsInKeys(s));
         } catch (IOException e) {
             throw new CatalogDBException("Error parsing " + tClass.getName(), e);
@@ -439,10 +333,26 @@ class MongoDBUtils {
         return filteredOptions;
     }
 
+    static void filterBooleanParams(ObjectMap parameters, Map<String, Object> filteredParams, String[] acceptedParams) {
+        for (String s : acceptedParams) {
+            if (parameters.containsKey(s)) {
+                filteredParams.put(s, parameters.getBoolean(s));
+            }
+        }
+    }
+
     static void filterStringParams(ObjectMap parameters, Map<String, Object> filteredParams, String[] acceptedParams) {
         for (String s : acceptedParams) {
             if (parameters.containsKey(s)) {
                 filteredParams.put(s, parameters.getString(s));
+            }
+        }
+    }
+
+    static void filterStringListParams(ObjectMap parameters, Map<String, Object> filteredParams, String[] acceptedParams) {
+        for (String s : acceptedParams) {
+            if (parameters.containsKey(s)) {
+                filteredParams.put(s, parameters.getAsStringList(s));
             }
         }
     }
@@ -508,8 +418,17 @@ class MongoDBUtils {
             if (parameters.containsKey(s)) {
                 Document document = null;
                 try {
-                    document = getMongoDBDocument(parameters.get(s), s);
-                    filteredParams.put(s, document);
+                    if (parameters.get(s) instanceof List<?>) {
+                        List<Object> originalList = parameters.getAsList(s);
+                        List<Document> documentList = new ArrayList<>(originalList.size());
+                        for (Object object : originalList) {
+                            documentList.add(getMongoDBDocument(object, s));
+                        }
+                        filteredParams.put(s, documentList);
+                    } else {
+                        document = getMongoDBDocument(parameters.get(s), s);
+                        filteredParams.put(s, document);
+                    }
                 } catch (CatalogDBException e) {
                     e.printStackTrace();
                 }
@@ -655,12 +574,14 @@ class MongoDBUtils {
             if (variableType == Variable.VariableType.BOOLEAN) {
                 type = QueryParam.Type.BOOLEAN;
 
-            } else if (variableType == Variable.VariableType.NUMERIC) {
+            } else if (variableType == Variable.VariableType.DOUBLE) {
                 type = QueryParam.Type.DECIMAL;
+            } else if (variableType == Variable.VariableType.INTEGER) {
+                type = QueryParam.Type.INTEGER;
             }
         }
 
-        List<Bson> valueList = addCompQueryFilter(type, "value" + route, Arrays.asList(values), new ArrayList<>());
+        List<Document> valueList = addCompQueryFilter(type, "value" + route, Arrays.asList(values), new ArrayList<>());
         annotationSetFilter.add(
                 Filters.elemMatch("annotations", Filters.and(
                         Filters.eq("name", variableId),
@@ -721,7 +642,7 @@ class MongoDBUtils {
                 if (variableType == Variable.VariableType.BOOLEAN) {
                     type = AbstractDBAdaptor.FilterOption.Type.BOOLEAN;
 
-                } else if (variableType == Variable.VariableType.NUMERIC) {
+                } else if (variableType == Variable.VariableType.DOUBLE) {
                     type = AbstractDBAdaptor.FilterOption.Type.NUMERICAL;
                 }
             }
@@ -736,8 +657,8 @@ class MongoDBUtils {
         }
     }
 
-    static List<Bson> addCompQueryFilter(QueryParam option, String optionKey, String queryKey, ObjectMap
-            options, List<Bson> andQuery) throws CatalogDBException {
+    static List<Document> addCompQueryFilter(QueryParam option, String optionKey, String queryKey,
+                                         ObjectMap options, List<Document> andQuery) throws CatalogDBException {
         List<String> optionsList = options.getAsStringList(optionKey);
         if (queryKey == null) {
             queryKey = "";
@@ -745,10 +666,10 @@ class MongoDBUtils {
         return addCompQueryFilter(option.type(), queryKey, optionsList, andQuery);
     }
 
-    private static List<Bson> addCompQueryFilter(QueryParam.Type type, String queryKey, List<String> optionsList,
-                                                     List<Bson> andQuery) throws CatalogDBException {
+    public static List<Document> addCompQueryFilter(QueryParam.Type type, String queryKey, List<String> optionsList,
+                                                     List<Document> andQuery) throws CatalogDBException {
 
-        ArrayList<Bson> or = new ArrayList<>(optionsList.size());
+        ArrayList<Document> or = new ArrayList<>(optionsList.size());
         for (String option : optionsList) {
             Matcher matcher = OPERATION_PATTERN.matcher(option);
             String operator;
@@ -773,6 +694,15 @@ class MongoDBUtils {
                 throw new CatalogDBException("Unknown filter operation: " + option + " . Missing key");
             }
             switch (type) {
+                case INTEGER:
+                case INTEGER_ARRAY:
+                    try {
+                        int intValue = Integer.parseInt(filter);
+                        or.add(addNumberOperationQueryFilter(key, operator, intValue));
+                    } catch (NumberFormatException e) {
+                        throw new CatalogDBException(e);
+                    }
+                    break;
                 case DECIMAL:
                 case DOUBLE:
                 case DECIMAL_ARRAY:
@@ -832,12 +762,6 @@ class MongoDBUtils {
                 filter = option;
             } else {
                 operator = matcher.group(2);
-//                if (queryKey.isEmpty()) {
-//                    key = matcher.group(1);
-//                } else {
-//                    String separatorDot = matcher.group(1).isEmpty() ? "" : ".";
-//                    key = queryKey + separatorDot + matcher.group(1);
-//                }
                 key = queryKey;
                 filter = matcher.group(3);
             }

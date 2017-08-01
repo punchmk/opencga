@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,10 +27,7 @@ import org.opencb.opencga.core.exception.VersionException;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.*;
-import javax.ws.rs.core.Context;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.UriInfo;
+import javax.ws.rs.core.*;
 import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.LinkedList;
@@ -42,12 +39,12 @@ import java.util.Map;
  */
 @Path("/{version}/tools")
 @Produces(MediaType.APPLICATION_JSON)
-@Api(value = "Tools", position = 11, description = "Methods for working with 'tools' endpoint")
+@Api(value = "Tools", hidden = true, position = 11, description = "Methods for working with 'tools' endpoint")
 public class ToolWSServer extends OpenCGAWSServer {
 
 
-    public ToolWSServer(@Context UriInfo uriInfo, @Context HttpServletRequest httpServletRequest) throws IOException, VersionException {
-        super(uriInfo, httpServletRequest);
+    public ToolWSServer(@Context UriInfo uriInfo, @Context HttpServletRequest httpServletRequest, @Context HttpHeaders httpHeaders) throws IOException, VersionException {
+        super(uriInfo, httpServletRequest, httpHeaders);
     }
 
     @GET

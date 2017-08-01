@@ -1,3 +1,19 @@
+/*
+ * Copyright 2015-2017 OpenCB
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.opencb.opencga.storage.core.variant.dummy;
 
 import org.opencb.biodata.models.variant.VariantSource;
@@ -11,6 +27,7 @@ import org.opencb.opencga.storage.core.variant.VariantStorageEngine;
 import org.opencb.opencga.storage.core.variant.adaptors.VariantDBAdaptor;
 import org.opencb.opencga.storage.core.variant.io.VariantReaderUtils;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
@@ -24,9 +41,10 @@ import java.util.List;
 public class DummyVariantStoragePipeline extends VariantStoragePipeline {
 
     public static final String VARIANTS_LOAD_FAIL = "dummy.variants.load.fail";
+    private final Logger logger = LoggerFactory.getLogger(DummyVariantStoragePipeline.class);
 
-    public DummyVariantStoragePipeline(StorageConfiguration configuration, String storageEngineId, Logger logger, VariantDBAdaptor dbAdaptor, VariantReaderUtils variantReaderUtils) {
-        super(configuration, storageEngineId, logger, dbAdaptor, variantReaderUtils);
+    public DummyVariantStoragePipeline(StorageConfiguration configuration, String storageEngineId, VariantDBAdaptor dbAdaptor, VariantReaderUtils variantReaderUtils) {
+        super(configuration, storageEngineId, dbAdaptor, variantReaderUtils);
     }
 
     public void init(ObjectMap options) {
@@ -49,9 +67,9 @@ public class DummyVariantStoragePipeline extends VariantStoragePipeline {
         logger.info("Loading file " + input);
         List<Integer> fileIds = getOptions().getAsIntegerList(VariantStorageEngine.Options.FILE_ID.key());
         if (getOptions().getBoolean(VARIANTS_LOAD_FAIL)) {
-            setStatus(BatchFileOperation.Status.ERROR, "load", fileIds);
+            getStudyConfigurationManager().atomicSetStatus(getStudyId(), BatchFileOperation.Status.ERROR, "load", fileIds);
         } else {
-            setStatus(BatchFileOperation.Status.DONE, "load", fileIds);
+            getStudyConfigurationManager().atomicSetStatus(getStudyId(), BatchFileOperation.Status.DONE, "load", fileIds);
         }
         return input;
     }
@@ -65,14 +83,15 @@ public class DummyVariantStoragePipeline extends VariantStoragePipeline {
     @Override
     public void securePostLoad(List<Integer> fileIds, StudyConfiguration studyConfiguration) throws StorageEngineException {
         super.securePostLoad(fileIds, studyConfiguration);
-        BatchFileOperation.Status status = secureSetStatus(studyConfiguration, BatchFileOperation.Status.READY, "load", fileIds);
+        BatchFileOperation.Status status = dbAdaptor.getStudyConfigurationManager()
+                .setStatus(studyConfiguration, BatchFileOperation.Status.READY, "load", fileIds);
         if (status != BatchFileOperation.Status.DONE) {
             logger.warn("Unexpected status " + status);
         }
     }
 
     @Override
-    protected void checkLoadedVariants(URI input, int fileId, StudyConfiguration studyConfiguration, ObjectMap options) throws StorageEngineException {
+    protected void checkLoadedVariants(int fileId, StudyConfiguration studyConfiguration) throws StorageEngineException {
 
     }
 }

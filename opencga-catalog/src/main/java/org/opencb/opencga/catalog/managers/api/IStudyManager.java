@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import org.opencb.commons.datastore.core.QueryOptions;
 import org.opencb.commons.datastore.core.QueryResult;
 import org.opencb.opencga.catalog.db.api.StudyDBAdaptor;
 import org.opencb.opencga.catalog.exceptions.CatalogException;
+import org.opencb.opencga.catalog.managers.AbstractManager;
 import org.opencb.opencga.catalog.models.*;
 import org.opencb.opencga.catalog.models.acls.permissions.StudyAclEntry;
 import org.opencb.opencga.catalog.models.summaries.StudySummary;
@@ -110,32 +111,47 @@ public interface IStudyManager extends ResourceManager<Long, Study> {
     @Deprecated
     QueryResult<Study> share(long studyId, AclEntry acl) throws CatalogException;
 
+//    void membersHavePermissionsInStudy(long studyId, List<String> members) throws CatalogException;
 
     /*---------------------*/
     /* VariableSet METHODS */
     /*---------------------*/
 
-    QueryResult<VariableSet> createVariableSet(long studyId, String name, Boolean unique, String description,
+    /**
+     * Obtains the resource java bean containing the requested ids.
+     *
+     * @param variableStr VariableSet in string format. Could be either the id or name.
+     * @param studyStr Study id in string format. Could be one of [id|user@aliasProject:aliasStudy|aliasProject:aliasStudy|aliasStudy].
+     * @param sessionId Session id of the user logged.
+     * @return the resource java bean containing the requested id.
+     * @throws CatalogException when more than one variableSet is found.
+     */
+    AbstractManager.MyResourceId getVariableSetId(String variableStr, @Nullable String studyStr, String sessionId) throws CatalogException;
+
+    QueryResult<VariableSet> createVariableSet(long studyId, String name, Boolean unique, Boolean confidential, String description,
                                                Map<String, Object> attributes, List<Variable> variables, String sessionId)
             throws CatalogException;
 
-    QueryResult<VariableSet> createVariableSet(long studyId, String name, Boolean unique, String description,
+    QueryResult<VariableSet> createVariableSet(long studyId, String name, Boolean unique, Boolean confidential, String description,
                                                Map<String, Object> attributes, Set<Variable> variables, String sessionId)
             throws CatalogException;
 
-    QueryResult<VariableSet> readVariableSet(long variableSet, QueryOptions options, String sessionId) throws CatalogException;
+    QueryResult<VariableSet> getVariableSet(String studyStr, String variableSet, QueryOptions options, String sessionId)
+            throws CatalogException;
 
     QueryResult<VariableSet> searchVariableSets(String studyStr, Query query, QueryOptions options, String sessionId)
             throws CatalogException;
 
-    QueryResult<VariableSet> deleteVariableSet(long variableSetId, QueryOptions queryOptions, String sessionId) throws CatalogException;
+    QueryResult<VariableSet> deleteVariableSet(String studyStr, String variableSetStr, String sessionId) throws CatalogException;
 
-    QueryResult<VariableSet> addFieldToVariableSet(long variableSetId, Variable variable, String sessionId) throws CatalogException;
-
-    QueryResult<VariableSet> removeFieldFromVariableSet(long variableSetId, String name, String sessionId) throws CatalogException;
-
-    QueryResult<VariableSet> renameFieldFromVariableSet(long variableSetId, String oldName, String newName, String sessionId)
+    QueryResult<VariableSet> addFieldToVariableSet(String studyStr, String variableSetStr, Variable variable, String sessionId)
             throws CatalogException;
+
+    QueryResult<VariableSet> removeFieldFromVariableSet(String studyStr, String variableSetStr, String name, String sessionId)
+            throws CatalogException;
+
+    QueryResult<VariableSet> renameFieldFromVariableSet(String studyStr, String variableSetStr, String oldName, String newName,
+                                                        String sessionId) throws CatalogException;
 
     /**
      * Ranks the elements queried, groups them by the field(s) given and return it sorted.
@@ -212,18 +228,8 @@ public interface IStudyManager extends ResourceManager<Long, Study> {
      */
     QueryResult<StudySummary> getSummary(long studyId, String sessionId, QueryOptions queryOptions) throws CatalogException;
 
-    /**
-     * Retrieve the study Acls for the given members.
-     *
-     * @param studyStr Study id of which the acls will be obtained.
-     * @param members userIds/groupIds for which the acls will be retrieved. When this is null, it will obtain all the acls.
-     * @param sessionId Session of the user that wants to retrieve the acls.
-     * @return A queryResult containing the study acls.
-     * @throws CatalogException when the userId does not have permissions (only the users with an "admin" role will be able to do this),
-     * the study id is not valid or the members given do not exist.
-     */
-    @Deprecated
-    QueryResult<StudyAclEntry> getAcls(String studyStr, List<String> members, String sessionId) throws CatalogException;
+    List<QueryResult<StudyAclEntry>> updateAcl(String studyStr, String memberId, Study.StudyAclParams aclParams, String sessionId)
+            throws CatalogException;
 
     //-----------------     GROUPS         ------------------
 
@@ -240,16 +246,6 @@ public interface IStudyManager extends ResourceManager<Long, Study> {
     QueryResult<Group> createGroup(String studyStr, String groupId, String userList, String sessionId) throws CatalogException;
 
     /**
-     * Obtain all the groups that are present in the study.
-     *
-     * @param studyStr study.
-     * @param sessionId session id of the user that wants to perform this action.
-     * @return all the groups present in the study.
-     * @throws CatalogException catalogException.
-     */
-    QueryResult<Group> getAllGroups(String studyStr, String sessionId) throws CatalogException;
-
-    /**
      * Obtain the group asked.
      *
      * @param studyStr study.
@@ -260,20 +256,19 @@ public interface IStudyManager extends ResourceManager<Long, Study> {
      */
     QueryResult<Group> getGroup(String studyStr, String groupId, String sessionId) throws CatalogException;
 
+    QueryResult<Group> updateGroup(String studyStr, String groupId, GroupParams groupParams, String sessionId) throws CatalogException;
+
     /**
-     * Update the members of a group.
+     * Update the parameters of a group.
      *
      * @param studyStr study.
      * @param groupId group id.
-     * @param addUsers Comma separated list of users that will be added to the group.
-     * @param removeUsers Comma separated list of users that will be removed from the group.
-     * @param setUsers Comma separated list of users that will be set to the group. Previous users will be removed.
+     * @param syncFrom Sync object that will be set.
      * @param sessionId session id of the user that wants to perform this action.
      * @return the group after the update action.
      * @throws CatalogException catalogException.
      */
-    QueryResult<Group> updateGroup(String studyStr, String groupId, @Nullable String addUsers, @Nullable String removeUsers,
-                                   @Nullable String setUsers, String sessionId) throws CatalogException;
+    QueryResult<Group> syncGroupWith(String studyStr, String groupId, Group.Sync syncFrom, String sessionId) throws CatalogException;
 
     /**
      * Delete the group.
@@ -322,5 +317,7 @@ public interface IStudyManager extends ResourceManager<Long, Study> {
 
     QueryResult<DiseasePanel> updateDiseasePanel(String panelStr, ObjectMap parameters, String sessionId) throws CatalogException;
 
-    QueryResult<VariableSetSummary> getVariableSetSummary(long variableSetId, String sessionId) throws CatalogException;
+    QueryResult<VariableSetSummary> getVariableSetSummary(String studyStr, String variableSetId, String sessionId) throws CatalogException;
+
+    int getCurrentRelease(long studyId) throws CatalogException;
 }

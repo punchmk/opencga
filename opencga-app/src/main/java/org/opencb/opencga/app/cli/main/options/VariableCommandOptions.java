@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -62,7 +62,7 @@ public class VariableCommandOptions {
         @ParametersDelegate
         public GeneralCliOptions.CommonCommandOptions commonOptions = commonCommandOptions;
 
-        @Parameter(names = {"--variable-set"}, description = "VariableSet id", required = true, arity = 1)
+        @Parameter(names = {"--variable-set"}, description = "VariableSet id or name", required = true, arity = 1)
         public String id;
 
         @Parameter(names = {"-s", "--study"}, description = "Study [[user@]project:]study where study and project can be either the id or"
@@ -82,6 +82,10 @@ public class VariableCommandOptions {
 
         @Parameter(names = {"--unique"}, description = "Unique", arity = 0)
         public boolean unique;
+
+        @Parameter(names = {"--confidential"}, description = "Flag to indicate that the variable set and any annotation set created from"
+                + " the current variable set will be confidential and will require of an additional special permission", arity = 0)
+        public boolean confidential;
 
         @Parameter(names = {"--description"}, description = "Description of the variable set", arity = 1)
         public String description;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -233,7 +233,7 @@ public abstract class CommandExecutor {
         this.configuration = configuration;
     }
 
-    protected static String getParsedSubCommand(JCommander jCommander) {
+    public static String getParsedSubCommand(JCommander jCommander) {
         String parsedCommand = jCommander.getParsedCommand();
         if (jCommander.getCommands().containsKey(parsedCommand)) {
             String subCommand = jCommander.getCommands().get(parsedCommand).getParsedCommand();

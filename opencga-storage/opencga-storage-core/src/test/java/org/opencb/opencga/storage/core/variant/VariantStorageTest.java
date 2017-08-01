@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,19 +17,25 @@
 package org.opencb.opencga.storage.core.variant;
 
 import org.opencb.biodata.models.variant.VariantSource;
+import org.opencb.biodata.models.variant.avro.VariantType;
 
 /**
  * Created on 26/10/15
  *
  * @author Jacobo Coll &lt;jacobo167@gmail.com&gt;
  */
-public interface VariantStorageTest {
+public interface VariantStorageTest extends AutoCloseable {
 
     VariantStorageEngine getVariantStorageEngine() throws Exception;
 
     void clearDB(String dbName) throws Exception;
 
-    default int getExpectedNumLoadedVariants(VariantSource source) throws Exception {
-        return source.getStats().getNumRecords();
+    default void close() throws Exception {}
+
+    default int getExpectedNumLoadedVariants(VariantSource source) {
+        int numRecords = source.getStats().getNumRecords();
+        return numRecords
+                - source.getStats().getVariantTypeCount(VariantType.SYMBOLIC)
+                - source.getStats().getVariantTypeCount(VariantType.NO_VARIATION);
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,7 @@
 
 package org.opencb.opencga.storage.core.metadata;
 
-import java.util.Calendar;
-import java.util.Date;
-import java.util.List;
-import java.util.TreeMap;
+import java.util.*;
 
 /**
  * Batch file operation information.
@@ -60,6 +57,21 @@ public class BatchFileOperation {
         this.fileIds = fileIds;
         this.timestamp = timestamp;
         this.type = type;
+    }
+
+    public BatchFileOperation(BatchFileOperation batch) {
+        this.operationName = batch.operationName;
+        this.fileIds = new ArrayList<>(batch.fileIds);
+        this.timestamp = batch.timestamp;
+        this.status.putAll(batch.status);
+        this.type = batch.type;
+    }
+
+    public boolean sameOperation(Collection<Integer> fileIds, Type type, String jobOperationName) {
+        return this.type.equals(type)
+                && this.operationName.equals(jobOperationName)
+                && fileIds.size() == this.fileIds.size()
+                && fileIds.containsAll(this.fileIds);
     }
 
     public Status currentStatus() {

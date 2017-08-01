@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2016 OpenCB
+ * Copyright 2015-2017 OpenCB
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,6 @@ public class AnnotationCommandOptions {
     private GeneralCliOptions.CommonCommandOptions commonCommandOptions;
 
     private AnnotationSetsCreateCommandOptions createCommandOptions;
-    private AnnotationSetsAllInfoCommandOptions allInfoCommandOptions;
     private AnnotationSetsSearchCommandOptions searchCommandOptions;
     private AnnotationSetsDeleteCommandOptions deleteCommandOptions;
     private AnnotationSetsInfoCommandOptions infoCommandOptions;
@@ -60,17 +59,13 @@ public class AnnotationCommandOptions {
         public String annotations;
     }
 
-    @Parameters(commandNames = {"annotation-sets-all-info"}, commandDescription = "Retrieve all the annotation sets from the resource")
-    public class AnnotationSetsAllInfoCommandOptions extends BaseCommandOptions {
-    }
-
     @Parameters(commandNames = {"annotation-sets-search"}, commandDescription = "Search annotation sets from the resource")
     public class AnnotationSetsSearchCommandOptions extends BaseCommandOptions {
 
-        @Parameter(names = {"--variable-set-id"}, description = "Variable set id", arity = 1)
+        @Parameter(names = {"--variable-set"}, description = "Variable set id or name", arity = 1)
         public String variableSetId;
 
-        @Parameter(names = {"--annotation"}, description = "Annotation",  arity = 1)
+        @Parameter(names = {"--annotation"}, description = "Annotation, e.g: key1=value(,key2=value)",  arity = 1)
         public String annotation;
     }
 
@@ -85,10 +80,11 @@ public class AnnotationCommandOptions {
         public String annotations;
     }
 
-    @Parameters(commandNames = {"annotation-sets-info"}, commandDescription = "Retrieve one annotation set")
+    @Parameters(commandNames = {"annotation-sets"}, commandDescription = "Retrieve all the annotation sets from the resource")
     public class AnnotationSetsInfoCommandOptions extends BaseCommandOptions {
 
-        @Parameter(names = {"--annotation-set-name"}, description = "Annotation set name", required = true, arity = 1)
+        @Parameter(names = {"--name"}, description = "Annotation set name. If present, it will only fetch the required "
+                + "annotation set", arity = 1)
         public String annotationSetName;
     }
 
@@ -108,13 +104,6 @@ public class AnnotationCommandOptions {
             this.createCommandOptions = new AnnotationSetsCreateCommandOptions();
         }
         return createCommandOptions;
-    }
-
-    public AnnotationSetsAllInfoCommandOptions getAllInfoCommandOptions() {
-        if (this.allInfoCommandOptions == null) {
-            this.allInfoCommandOptions = new AnnotationSetsAllInfoCommandOptions();
-        }
-        return allInfoCommandOptions;
     }
 
     public AnnotationSetsSearchCommandOptions getSearchCommandOptions() {
