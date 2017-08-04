@@ -15,6 +15,7 @@
                 margin-left: 1em;
                 color: #999
             }
+
         </style>
 
         <div class="center">
@@ -29,9 +30,19 @@
         <div class="row">
 
             <!-- Results collapsable div -->
-            <div class="col-sm-4">
-                <div class="panel panel-primary">
-                    <button on-tap="showInIGV" class="btn btn-success" style="float: right; height: 36px;">Show tracks</button>
+            <!--<div class="col-sm-4">-->
+                <div class="panel panel-primary" style="margin: 5px 20px 15px 20px;">
+                    <button on-tap="showInIGV" class="btn btn-success" style="float: right; height: 36px; margin: 0px 5px;">
+                        Show tracks
+                    </button>
+                    <a class="btn btn-info" href="data:text/plain;charset=utf-8,{{_script}}" target="_blank" download="igv-batch.txt"
+                       style="float: right; height: 36px;">
+                        <i class="fa fa-download" aria-hidden="true"></i>
+                        Download batch script
+                    </a>
+
+                    <!--<a href="data:text/plain;charset=utf-8,{{_script}}" target="_blank" download="igv-batch.txt">Download batch script</a>-->
+
                     <div class="panel-heading" role="tab" id="results_panel">
                         <h4 class="panel-title">
                             <a role="button" data-toggle="collapse" href="#collapseResultsPanel" aria-expanded="true"
@@ -45,16 +56,16 @@
                     <div id="collapseResultsPanel" class="panel-collapse collapse in" role="tabpanel" aria-labelledby="headingOne">
                         <div class="panel-body" style="max-height: 300px; overflow-y: auto">
                             <template is="dom-repeat" items="{{_availableFiles}}" as="sample">
-                                <div style="font-weight: bold; text-decoration: underline">{{sample.name}}</div>
+                                <!--<div style="font-weight: bold; text-decoration: underline">{{sample.name}}</div>-->
                                 <template is="dom-repeat" items="{{sample.results}}" as="result">
                                     <div style="font-weight: bold; margin-left: 5px;">{{result.name}}</div>
                                     <template is="dom-repeat" items="{{result.files}}" as="file">
                                         <template is="dom-if" if="{{_preCheckFile(file)}}">
-                                            <input type="checkbox" style="margin-left: 15px;"
+                                            <input type="checkbox" style="margin-left: 15px;" on-change="checkSelectionChanged"
                                                    name="file-checkbox" value="{{file.name}}" data="{{file}}" checked>
                                         </template>
                                         <template is="dom-if" if="{{!_preCheckFile(file)}}">
-                                            <input type="checkbox" style="margin-left: 15px;"
+                                            <input type="checkbox" style="margin-left: 15px;" on-change="checkSelectionChanged"
                                                    name="file-checkbox" value="{{file.name}}" data="{{file}}">
                                         </template>
                                         <span style="word-wrap:break-word;">{{file.name}}</span><br>
@@ -66,30 +77,32 @@
                         </div>
                     </div>
                 </div>
-            </div>
+            <!--</div>-->
 
-            <div class="col-sm-8">
-                <div class="panel panel-primary">
-                    <div class="panel-heading" role="tab" id="url_panel">
-                        <h4 class="panel-title">
-                            <a role="button" data-toggle="collapse" href="#urls" aria-expanded="true" aria-controls="urls">
-                                URLs for IGV Desktop
-                                <span class="caret"></span>
-                            </a>
-                        </h4>
-                    </div>
+            <!--<div class="col-sm-8">-->
 
-                    <div id="urls" class="panel-collapse collapse" role="tabpanel" aria-labelledby="headingOne">
-                        <div class="panel-body" style="max-height: 300px; overflow-y: auto">
-                            <template is="dom-repeat" items="{{_urls}}">
-                                <div style="font-weight: bold; text-decoration: underline">{{item.name}}</div>
-                                <div><span style="font-weight: bold">File: </span><span style="word-wrap:break-word; display:block;">{{item.file}}</span></div>
-                                <div><span style="font-weight: bold">Index: </span><span style="word-wrap:break-word; display:block;">{{item.index}}</span></div>
-                            </template>
-                        </div>
-                    </div>
-                </div>
-            </div>
+
+                <!--<div class="panel panel-primary">-->
+                    <!--<div class="panel-heading" role="tab" id="url_panel">-->
+                        <!--<h4 class="panel-title">-->
+                            <!--<a role="button" data-toggle="collapse" href="#urls" aria-expanded="true" aria-controls="urls">-->
+                                <!--URLs for IGV Desktop-->
+                                <!--<span class="caret"></span>-->
+                            <!--</a>-->
+                        <!--</h4>-->
+                    <!--</div>-->
+
+                    <!--<div id="urls" class="panel-collapse collapse" role="tabpanel" aria-labelledby="headingOne">-->
+                        <!--<div class="panel-body" style="max-height: 300px; overflow-y: auto">-->
+                            <!--<template is="dom-repeat" items="{{_urls}}">-->
+                                <!--<div style="font-weight: bold; text-decoration: underline">{{item.name}}</div>-->
+                                <!--<div><span style="font-weight: bold">File: </span><span style="word-wrap:break-word; display:block;">{{item.file}}</span></div>-->
+                                <!--<div><span style="font-weight: bold">Index: </span><span style="word-wrap:break-word; display:block;">{{item.index}}</span></div>-->
+                            <!--</template>-->
+                        <!--</div>-->
+                    <!--</div>-->
+                <!--</div>-->
+            <!--</div>-->
         </div>
 
         <!-- IGV div -->
@@ -116,6 +129,10 @@
                 },
                 _availableFiles: {
                     type: Array
+                },
+                // Script to be downloaded to load selected files in IGV standalone
+                _script: {
+                    type: String
                 }
             },
             observers: [
@@ -293,12 +310,17 @@
             updateAvailableFiles: function(response) {
                     let mySamples = [];
                     let formats = {};
+                    let preselectedFiles = [];
+                    let _this = this;
                     response.response.forEach(function(response) {
                         response.result.forEach(function(file) {
                             if (!formats.hasOwnProperty(file.format)) {
                                 formats[file.format] = [];
                             }
                             formats[file.format].push(file);
+                            if (_this._preCheckFile(file)) {
+                                preselectedFiles.push(file);
+                            }
                         });
                     });
                     let myFiles = [];
@@ -313,6 +335,45 @@
                         results: myFiles
                     });
                     this._availableFiles = mySamples;
+
+                    this.generateIGVBatchScript(preselectedFiles);
+            },
+
+            checkSelectionChanged: function(e) {
+                this.generateIGVBatchScript();
+            },
+
+            generateIGVBatchScript: function(files) {
+
+                if (typeof files === "undefined") {
+                    let inputArray = document.querySelectorAll('input[name=file-checkbox]:checked');
+                    files = [];
+                    inputArray.forEach(function (input) {
+                        files.push(input.data);
+                    });
+                }
+
+                if (files.length === 0) {
+                    this._script = "";
+                    return;
+                }
+
+                let myScriptArray = [];
+                myScriptArray.push("new");
+
+                let assembly = this.getAssembly();
+                if (assembly === "GRCh37") {
+                    myScriptArray.push("genome hg19");
+                } else {
+                    myScriptArray.push("genome hg38");
+                }
+
+                let _this = this;
+                files.forEach(function(file) {
+                    myScriptArray.push("load " + _this.baseUrl + file.path.replace(/\//g, ":") + _this.queryParams);
+                });
+
+                this._script = encodeURI(myScriptArray.join("\n"));
             },
 
             // It parses the file response to create an array of tracks to be loaded into IGV
@@ -443,18 +504,23 @@
                 this.renderIGV(tracks);
             },
 
-            renderIGV: function(tracks) {
-//                if (tracks.length > 5) {
-//                    this.showErrorAlert(tracks.length + " tracks found for the query. Only the first 5 will be used.");
-//                    tracks = tracks.slice(0, 5);
-//                }
-
-                let queryParams = URI.parseQuery(window.location.search);
+            // Query params sent in the url
+            getAssembly: function(queryParams) {
+                if (typeof queryParams === "undefined") {
+                    queryParams = URI.parseQuery(window.location.search);
+                }
 
                 let assembly = "GRCh38";
                 if (typeof(this.config.assemblies) !== "undefined" && typeof(this.config.assemblies[queryParams.study]) !== "undefined") {
                     assembly = this.config.assemblies[queryParams.study];
                 }
+                return assembly;
+            },
+
+            renderIGV: function(tracks) {
+                let queryParams = URI.parseQuery(window.location.search);
+                let assembly = this.getAssembly(queryParams);
+
                 if (assembly === "GRCh37") {
                     // GRCh37
                     tracks.push({
