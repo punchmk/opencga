@@ -67,7 +67,7 @@
             ready: function() {
                 this._logged = false;
 
-                if (typeof this.prefix === "undefined" || this.prefix == "") {
+                if (typeof this.prefix === "undefined" || this.prefix === "") {
                     this.prefix = Utils.randomString(6);
                 }
 
@@ -79,7 +79,7 @@
                 this.opencgaClient = new OpenCGAClient(this.opencgaClientConfig);
 
                 let sid = Cookies.get(this.opencgaClientConfig.cookieSessionId);
-                if (typeof sid !== "undefined" && sid != "") {
+                if (typeof sid !== "undefined" && sid !== "") {
                     this.userId = Cookies.get(this.opencgaClientConfig.cookieUserId);
                     this.sessionId = sid;
                     this.set('opencgaClient._config.sessionId', sid);

@@ -49,8 +49,14 @@
                                 <template is="dom-repeat" items="{{sample.results}}" as="result">
                                     <div style="font-weight: bold; margin-left: 5px;">{{result.name}}</div>
                                     <template is="dom-repeat" items="{{result.files}}" as="file">
-                                        <input type="checkbox" style="margin-left: 15px;"
-                                               name="file-checkbox" value="{{file.name}}" data="{{file}}">
+                                        <template is="dom-if" if="{{_preCheckFile(file)}}">
+                                            <input type="checkbox" style="margin-left: 15px;"
+                                                   name="file-checkbox" value="{{file.name}}" data="{{file}}" checked>
+                                        </template>
+                                        <template is="dom-if" if="{{!_preCheckFile(file)}}">
+                                            <input type="checkbox" style="margin-left: 15px;"
+                                                   name="file-checkbox" value="{{file.name}}" data="{{file}}">
+                                        </template>
                                         <span style="word-wrap:break-word;">{{file.name}}</span><br>
                                     </template>
                                 </template>
@@ -498,6 +504,26 @@
                     console.log("Cannot remove igv component");
                 }
                 igv.createBrowser(div, options);
+            },
+
+            _preCheckFile: function(file) {
+                // Always precheck BAM files
+                if (file.format === "BAM") {
+                    return true;
+                }
+
+                if (typeof this.config.filters.preselection === "undefined" || this.config.filters.preselection.length === 0) {
+                    return false;
+                }
+
+                for (let i = 0; i < this.config.filters.preselection.length; i++) {
+                    let filter = this.config.filters.preselection[i];
+                    if (file.name.indexOf(filter) > -1) {
+                        return true;
+                    }
+                }
+
+                return false;
             }
 
         });
