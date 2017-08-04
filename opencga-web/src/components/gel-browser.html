@@ -31,9 +31,11 @@
             <!-- Results collapsable div -->
             <div class="col-sm-4">
                 <div class="panel panel-primary">
+                    <button on-tap="showInIGV" class="btn btn-success" style="float: right; height: 36px;">Show tracks</button>
                     <div class="panel-heading" role="tab" id="results_panel">
                         <h4 class="panel-title">
-                            <a role="button" data-toggle="collapse" href="#collapseResultsPanel" aria-expanded="true" aria-controls="collapseResultsPanel">
+                            <a role="button" data-toggle="collapse" href="#collapseResultsPanel" aria-expanded="true"
+                               aria-controls="collapseResultsPanel">
                                 Available files to show
                                 <span class="caret"></span>
                             </a>
@@ -54,7 +56,6 @@
                                 </template>
                                 <br>
                             </template>
-                            <button on-tap="showInIGV" class="btn btn-primary">Show in IGV</button>
 
                         </div>
                     </div>
