@@ -7,7 +7,7 @@ var opencga = {
     filters: {
         // fixed filters that will be sent as query params to the query when searching for files
         query: {
-            // attributes: "gelStatus=READY"
+            "attributes.gelStatus": "=READY"
         },
         // list containing some strings. Only the files containing any of this strings in the file name will be preselected in the filter
         // RD: only the vcfs that have SV, CNV, duprem.atomic.left.split.vcf.gz
