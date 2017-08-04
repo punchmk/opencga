@@ -256,7 +256,7 @@
                 files = files.replace(/\//g, ":");
                 query["format"] = this._formats.toUpperCase();
                 query["include"] = "path,name,format,bioformat";
-                Object.assign(query, this.config.fixedQuery);
+                Object.assign(query, this.config.filters.query);
 
                 let _this = this;
                 this.opencgaClient.files().info(files, query).then(function (response) {
@@ -272,7 +272,7 @@
             searchFiles: function(query) {
                 query["format"] = this._formats.toUpperCase();
                 query["include"] = "path,name,format,bioformat";
-                Object.assign(query, this.config.fixedQuery);
+                Object.assign(query, this.config.filters.query);
 
                 let _this = this;
                 this.opencgaClient.files().search(query).then(function (response) {
